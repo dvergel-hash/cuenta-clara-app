@@ -4,6 +4,7 @@ import { ArrowRight, Bot, ChevronDown, Info, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { selectClass } from '@/components/form-styles'
 import { Input } from '@/components/ui/input'
+import { PROMPT_SINTESIS } from '@/lib/agentes'
 import { MIN_PUNTOS_REFERENCIA } from '@/lib/calculos'
 import { cn } from '@/lib/utils'
 
@@ -79,8 +80,7 @@ const AGENTES_INICIALES: Agente[] = [
     fuentes: 'Ofertas publicadas, señales de alerta y referencia',
     consulta: 'Sintetizar {licitacion} con sus señales y su desvío',
     modelo: 'claude-opus-5-5',
-    prompt:
-      'Sos un analista de compras públicas. Con las ofertas ya publicadas, el precio de referencia, el desvío y las señales de alerta de una licitación, redactá una síntesis de un párrafo para quien debe decidir. Indicá qué dato respalda cada conclusión, aclará qué no se pudo verificar y no recomiendes aprobar o rechazar: esa decisión es de la persona responsable.',
+    prompt: PROMPT_SINTESIS,
     activo: true,
     analisis: true,
   },

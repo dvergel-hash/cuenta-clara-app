@@ -1,6 +1,8 @@
 import { GENESIS, hashDecision, mediana, totalCotizacion } from './calculos'
 import { canonico, sha256 } from './sha256'
 import type {
+  BusquedaAgente,
+  CanalBusqueda,
   CondicionesCotizacion,
   Cotizacion,
   CotizacionRegistrada,
@@ -326,6 +328,102 @@ function construirRegistro(): Decision[] {
 }
 
 export const registro: Decision[] = construirRegistro()
+
+const AGENTE_COMPRAS = 'Agente de compras'
+const AGENTE_PRECIOS = 'Agente de precios'
+
+function canalDeFuente(fuente = ''): CanalBusqueda {
+  const f = fuente.toLowerCase()
+  if (f.includes('correo')) return 'correo'
+  if (f.includes('whatsapp')) return 'mensajeria'
+  return 'catalogo'
+}
+
+const busquedasExtra: Omit<BusquedaAgente, 'id'>[] = [
+  {
+    pedido_id: 'PED-2026-0147', agente: AGENTE_PRECIOS, fecha: '2026-10-21T09:12:00-03:00', canal: 'web',
+    consulta: 'notebook 14" i5 16GB 512GB SSD precio mayorista', destino: 'https://mercado.ejemplo.com.ar/notebooks/14-i5-16gb',
+    resultado: 'referencia', precio: 118_800_000,
+  },
+  {
+    pedido_id: 'PED-2026-0147', agente: AGENTE_PRECIOS, fecha: '2026-10-21T09:20:00-03:00', canal: 'web',
+    consulta: 'notebook 14" i5 16GB precio testigo organismos', destino: 'https://precios-testigo.ejemplo.gob.ar/informatica/notebook-14',
+    resultado: 'referencia', precio: 124_500_000,
+  },
+  {
+    pedido_id: 'PED-2026-0147', agente: AGENTE_COMPRAS, fecha: '2026-10-19T15:02:00-03:00', canal: 'correo',
+    consulta: 'Solicitud de cotización: 120 notebooks 14" i5/Ryzen 5, 16 GB RAM', destino: 'ventas@tecnored.ejemplo.com.ar',
+    resultado: 'sin_respuesta', nota: 'El proveedor ofertó luego por el portal.',
+  },
+  {
+    pedido_id: 'PED-2026-0126', agente: AGENTE_COMPRAS, fecha: '2026-09-22T11:30:00-03:00', canal: 'correo',
+    consulta: 'Solicitud de cotización: 8.000 l de gasoil grado 2 con entrega', destino: 'comercial@distribuidoracentro.ejemplo.com.ar',
+    resultado: 'sin_respuesta', nota: 'Sin respuesta dentro del plazo de 48 h.',
+  },
+  {
+    pedido_id: 'PED-2026-0126', agente: AGENTE_PRECIOS, fecha: '2026-09-25T10:05:00-03:00', canal: 'web',
+    consulta: 'precio gasoil grado 2 surtidor región centro', destino: 'https://surtidores.ejemplo.com.ar/precios/gasoil',
+    resultado: 'descartada', precio: 14_100_000, nota: 'Precio minorista en surtidor; no incluye entrega en tanque propio.',
+  },
+  {
+    pedido_id: 'PED-2026-0132', agente: AGENTE_PRECIOS, fecha: '2026-09-04T14:40:00-03:00', canal: 'web',
+    consulta: 'tóner 26A original HP precio', destino: 'https://tienda.ejemplo.com.ar/hp/cf226a-original',
+    resultado: 'descartada', precio: 16_200_000, nota: 'Producto original; el pedido admite compatibles. No comparable.',
+  },
+  {
+    pedido_id: 'PED-2026-0121', agente: AGENTE_PRECIOS, fecha: '2026-08-10T16:22:00-03:00', canal: 'web',
+    consulta: 'resma A4 80g caja x10 precio', destino: 'https://mercado.ejemplo.com.ar/resma-a4-80g',
+    resultado: 'descartada', precio: 19_400_000, nota: 'Gramaje distinto (80 g); no comparable con lo solicitado.',
+  },
+  {
+    pedido_id: 'PED-2026-0118', agente: AGENTE_COMPRAS, fecha: '2026-07-18T09:45:00-03:00', canal: 'correo',
+    consulta: 'Solicitud de cotización: mantenimiento preventivo de 6 ascensores, 12 meses', destino: 'contacto@elevar.ejemplo.com.ar',
+    resultado: 'sin_respuesta', nota: 'La empresa informó que no presta servicio en la zona.',
+  },
+]
+
+function construirBusquedas(): BusquedaAgente[] {
+  const porAgente = cotizaciones
+    .filter((c) => c.origen === 'agente')
+    .map((c): Omit<BusquedaAgente, 'id'> => {
+      const proveedor = proveedores.find((p) => p.id === c.proveedor_id)!
+      const principal = c.items[0]
+      return {
+        pedido_id: c.pedido_id,
+        agente: AGENTE_COMPRAS,
+        fecha: `${c.fecha_emision}T10:00:00-03:00`,
+        canal: canalDeFuente(c.fuente),
+        consulta: `Solicitud de cotización: ${principal.cantidad} ${principal.unidad} · ${principal.descripcion}`,
+        destino: proveedor.nombre,
+        resultado: 'cotizacion',
+        precio: totalCotizacion(c),
+        cotizacion_id: c.id,
+        nota: c.fuente,
+      }
+    })
+
+  const web = Object.entries(fuentesWeb).flatMap(([pedido_id, fuentes]) => {
+    const licitacion = licitaciones.find((l) => l.id === pedido_id)!
+    return fuentes.map(
+      (f): Omit<BusquedaAgente, 'id'> => ({
+        pedido_id,
+        agente: AGENTE_PRECIOS,
+        fecha: `${f.fecha}T12:00:00-03:00`,
+        canal: 'web',
+        consulta: `${licitacion.descripcion} precio`,
+        destino: f.url,
+        resultado: 'referencia',
+        precio: f.precio,
+      }),
+    )
+  })
+
+  return [...porAgente, ...web, ...busquedasExtra]
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    .map((b, i) => ({ ...b, id: `BUS-${String(i + 1).padStart(3, '0')}` }))
+}
+
+export const busquedas: BusquedaAgente[] = construirBusquedas()
 
 /** Variante para la demo: el registro 3 fue modificado después de sellado, sin recalcular su hash. */
 export const registroAlterado: Decision[] = registro.map((d, i) =>

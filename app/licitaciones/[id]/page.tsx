@@ -10,6 +10,7 @@ import { type Pestana, PestanasLicitacion } from '@/components/licitacion/pestan
 import { construirDictamen } from '@/lib/dictamen'
 import { DecisionPanel } from '@/components/licitacion/decision-panel'
 import { ReferenciaPanel } from '@/components/licitacion/referencia-panel'
+import { SenalesAlerta } from '@/components/licitacion/senales-alerta'
 import { VerificarIntegridad } from '@/components/licitacion/verificar-integridad'
 import { getLicitacion } from '@/lib/api'
 import { formatoFecha, formatoMoneda } from '@/lib/format'
@@ -67,6 +68,20 @@ export default async function LicitacionPage({
             <dt className="text-muted-foreground">Cierre</dt>
             <dd className="font-mono tabular-nums">{formatoFecha(licitacion.fecha_cierre)}</dd>
           </div>
+          <div className="flex flex-col gap-0.5">
+            <dt className="text-muted-foreground">Observaciones ciudadanas</dt>
+            <dd className="flex items-baseline gap-2">
+              <span className="font-mono tabular-nums">
+                {detalle.observaciones_publicadas} {detalle.observaciones_publicadas === 1 ? 'publicada' : 'publicadas'}
+              </span>
+              <Link
+                href={`/ciudadano?licitacion=${licitacion.id}`}
+                className="text-primary underline underline-offset-4"
+              >
+                Observar
+              </Link>
+            </dd>
+          </div>
         </dl>
       </header>
 
@@ -116,6 +131,8 @@ export default async function LicitacionPage({
           <CotizacionesTabla cotizaciones={cotizaciones} adjudicadoId={licitacion.proveedor_adjudicado_id} />
         )}
       </section>
+
+      <SenalesAlerta senales={detalle.senales} />
 
       {decision && (
         <div className="grid gap-6 lg:grid-cols-2">

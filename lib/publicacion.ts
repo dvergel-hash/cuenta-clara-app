@@ -1,4 +1,12 @@
-import type { BusquedaAgente, CotizacionRegistrada, Decision, Licitacion, Partida, Proveedor } from './types'
+import type {
+  BusquedaAgente,
+  CotizacionRegistrada,
+  Decision,
+  Licitacion,
+  ObservacionPublica,
+  Partida,
+  Proveedor,
+} from './types'
 
 /** Lo único que se publica de las ofertas mientras el pedido está abierto. */
 export interface OfertasSelladas {
@@ -26,4 +34,6 @@ export interface Fuente {
   cotizaciones(pedidoId: string): Promise<RespuestaCotizaciones>
   busquedas(pedidoId: string): Promise<BusquedaAgente[]>
   decisiones(): Promise<Decision[]>
+  /** Solo las observaciones ciudadanas ya publicadas. */
+  observaciones(licitacionId: string): Promise<ObservacionPublica[]>
 }

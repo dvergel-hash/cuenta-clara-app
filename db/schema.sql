@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS partidas (
 CREATE TABLE IF NOT EXISTS proveedores (
   id      text PRIMARY KEY,
   nombre  text NOT NULL,
-  cuit    text NOT NULL UNIQUE CHECK (cuit ~ '^[0-9]{11}$')
+  cuit    text NOT NULL UNIQUE CHECK (cuit ~ '^[0-9]{11}$'),
+  -- Fecha de inscripción del CUIT (YYYY-MM-DD). Alimenta la señal "proveedor nuevo".
+  fecha_alta text
 );
 
 CREATE TABLE IF NOT EXISTS licitaciones (
@@ -24,7 +26,9 @@ CREATE TABLE IF NOT EXISTS licitaciones (
                              CHECK (estado IN ('abierto', 'aprobado', 'observado', 'rechazado')),
   fecha_cierre             text NOT NULL,
   monto_estimado           double precision NOT NULL CHECK (monto_estimado >= 0),
-  proveedor_adjudicado_id  text REFERENCES proveedores(id)
+  proveedor_adjudicado_id  text REFERENCES proveedores(id),
+  organismo                text,
+  rubro                    text
 );
 
 -- proveedor_id no referencia proveedores: el portal acepta oferentes aún no registrados.
@@ -79,3 +83,21 @@ CREATE TABLE IF NOT EXISTS decisiones (
   hash                   text NOT NULL UNIQUE,
   creada                 timestamptz NOT NULL DEFAULT now()
 );
+
+-- Observaciones ciudadanas. La IP nunca se guarda en claro: solo su hash, para el límite de envíos.
+CREATE TABLE IF NOT EXISTS observaciones (
+  codigo              text PRIMARY KEY CHECK (codigo ~ '^CC-[A-Z2-9]{4}-[A-Z2-9]{4}$'),
+  licitacion_id       text NOT NULL REFERENCES licitaciones(id),
+  categoria           text NOT NULL CHECK (categoria IN ('precio', 'proveedor', 'especificaciones', 'plazo', 'otra')),
+  descripcion         text NOT NULL CHECK (char_length(descripcion) BETWEEN 30 AND 2000),
+  evidencia_url       text CHECK (evidencia_url ~ '^https?://'),
+  contacto            text CHECK (char_length(contacto) <= 120),
+  acepta_publicacion  boolean NOT NULL CHECK (acepta_publicacion),
+  estado              text NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'publicada', 'descartada')),
+  ip_hash             text NOT NULL,
+  creada              timestamptz NOT NULL DEFAULT now(),
+  revisada            timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS observaciones_ip_idx ON observaciones (ip_hash, creada);
+CREATE INDEX IF NOT EXISTS observaciones_licitacion_idx ON observaciones (licitacion_id, estado);

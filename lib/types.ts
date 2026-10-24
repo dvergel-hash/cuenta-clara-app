@@ -75,6 +75,8 @@ export interface Proveedor {
   id: string
   nombre: string
   cuit: string
+  /** Fecha de inscripción del CUIT (YYYY-MM-DD). */
+  fecha_alta?: string
 }
 
 export interface Licitacion {
@@ -85,6 +87,45 @@ export interface Licitacion {
   fecha_cierre: string
   monto_estimado: number
   proveedor_adjudicado_id?: string
+  organismo?: string
+  rubro?: string
+}
+
+export type TipoSenal = 'concentracion' | 'espejo' | 'oferta_unica' | 'fraccionamiento' | 'proveedor_nuevo'
+
+export interface SenalAlerta {
+  tipo: TipoSenal
+  titulo: string
+  detalle: string
+  /** Otras licitaciones que forman parte del patrón. */
+  relacionadas?: string[]
+}
+
+export type CategoriaObservacion = 'precio' | 'proveedor' | 'especificaciones' | 'plazo' | 'otra'
+export type EstadoObservacion = 'pendiente' | 'publicada' | 'descartada'
+
+/** Lo que se publica de una observación: nunca el contacto ni el código de seguimiento. */
+export interface ObservacionPublica {
+  licitacion_id: string
+  categoria: CategoriaObservacion
+  descripcion: string
+  evidencia_url?: string
+  creada: string
+}
+
+export interface SeguimientoObservacion {
+  codigo: string
+  licitacion_id: string
+  categoria: CategoriaObservacion
+  estado: EstadoObservacion
+  creada: string
+  revisada?: string
+}
+
+export interface ConfirmacionObservacion {
+  codigo: string
+  estado: 'pendiente'
+  creada: string
 }
 
 export interface LicitacionResumen extends Licitacion {
@@ -126,6 +167,9 @@ export interface LicitacionDetalle {
   puntos_referencia: number
   referencia_concluyente: boolean
   busquedas: BusquedaAgente[]
+  /** null mientras el pedido está abierto: las señales se calculan sobre ofertas publicadas. */
+  senales: SenalAlerta[] | null
+  observaciones_publicadas: number
 }
 
 export interface ProyeccionPartida extends Partida {

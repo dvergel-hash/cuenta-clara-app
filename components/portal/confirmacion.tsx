@@ -4,16 +4,18 @@ import { CircleCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useRef } from 'react'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { formatoMoneda } from '@/lib/format'
+import { formatoFechaHora, formatoMoneda, formatoMonedaEn } from '@/lib/format'
 import type { ConfirmacionCotizacion } from '@/lib/types'
 
-export function Confirmacion({
-  confirmacion,
-  onNueva,
-}: {
-  confirmacion: ConfirmacionCotizacion & { pedido: string; total: number }
-  onNueva: () => void
-}) {
+export type DatosComprobante = ConfirmacionCotizacion & {
+  pedido: string
+  moneda: 'ARS' | 'USD'
+  total: number
+  tipoCambio?: number
+  cierre?: string
+}
+
+export function Confirmacion({ confirmacion, onNueva }: { confirmacion: DatosComprobante; onNueva: () => void }) {
   const titulo = useRef<HTMLHeadingElement>(null)
   useEffect(() => titulo.current?.focus(), [])
 
@@ -38,13 +40,28 @@ export function Confirmacion({
           <dd className="font-mono">{confirmacion.id}</dd>
         </div>
         <div className="flex flex-col gap-0.5">
-          <dt className="text-muted-foreground">Total declarado (ARS)</dt>
-          <dd className="font-mono tabular-nums">{formatoMoneda(confirmacion.total)}</dd>
+          <dt className="text-muted-foreground">Total declarado ({confirmacion.moneda})</dt>
+          <dd className="font-mono tabular-nums">{formatoMonedaEn(confirmacion.total, confirmacion.moneda)}</dd>
+          {confirmacion.tipoCambio && (
+            <dd className="font-mono text-xs text-muted-foreground tabular-nums">
+              TC {confirmacion.tipoCambio} · ≈ {formatoMoneda(confirmacion.total * confirmacion.tipoCambio)}
+            </dd>
+          )}
         </div>
-        <div className="flex flex-col gap-0.5 sm:col-span-2">
-          <dt className="text-muted-foreground">Recibida</dt>
-          <dd>{new Date(confirmacion.recibida).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' })}</dd>
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-muted-foreground">Hora de recepción</dt>
+          <dd className="font-mono">
+            <time dateTime={confirmacion.recibida}>{formatoFechaHora(confirmacion.recibida, true)} h</time>
+          </dd>
         </div>
+        {confirmacion.cierre && (
+          <div className="flex flex-col gap-0.5">
+            <dt className="text-muted-foreground">Cierre del pedido</dt>
+            <dd className="font-mono">
+              <time dateTime={confirmacion.cierre}>{formatoFechaHora(confirmacion.cierre)} h</time>
+            </dd>
+          </div>
+        )}
         <div className="flex flex-col gap-0.5 sm:col-span-2">
           <dt className="text-muted-foreground">Hash SHA-256 de la oferta</dt>
           <dd className="break-all font-mono text-xs leading-relaxed">{confirmacion.hash}</dd>

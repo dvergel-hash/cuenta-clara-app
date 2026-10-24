@@ -6,6 +6,7 @@ import { EstadoBadge } from '@/components/indicadores'
 import { BusquedasAgentes } from '@/components/licitacion/busquedas-agentes'
 import { CotizacionesTabla } from '@/components/licitacion/cotizaciones-tabla'
 import { DictamenDocumento } from '@/components/licitacion/dictamen'
+import { LineaTiempo } from '@/components/licitacion/linea-tiempo'
 import { type Pestana, PestanasLicitacion } from '@/components/licitacion/pestanas'
 import { construirDictamen } from '@/lib/dictamen'
 import { DecisionPanel } from '@/components/licitacion/decision-panel'
@@ -144,6 +145,8 @@ export default async function LicitacionPage({
           <DecisionPanel decision={decision} />
         </div>
       )}
+
+      <LineaTiempo detalle={detalle} />
 
       <VerificarIntegridad pedidoId={licitacion.id} />
           </>

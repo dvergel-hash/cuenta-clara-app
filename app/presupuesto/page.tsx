@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { Luz } from '@/components/indicadores'
 import { PageHeader } from '@/components/page-header'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getProyeccionPresupuesto } from '@/lib/api'
+import { DesglosePartidas } from '@/components/presupuesto/desglose-partidas'
+import { getDesglosePartidas, getProyeccionPresupuesto } from '@/lib/api'
 import { FECHA_CORTE, MESES_TRANSCURRIDOS, type Semaforo } from '@/lib/calculos'
 import { formatoFecha, formatoMoneda, formatoPorcentajeSinSigno } from '@/lib/format'
 
@@ -17,7 +18,7 @@ function clasificar(desvio: number): { nivel: Semaforo; etiqueta: string } {
 }
 
 export default async function PresupuestoPage() {
-  const partidas = await getProyeccionPresupuesto()
+  const [partidas, desglose] = await Promise.all([getProyeccionPresupuesto(), getDesglosePartidas()])
   const totales = partidas.reduce(
     (acc, p) => ({
       asignado: acc.asignado + p.asignado,
@@ -104,6 +105,8 @@ export default async function PresupuestoPage() {
         Semáforo: verde si la proyección queda dentro de ±5 % del asignado, amarillo entre 5 % y 15 %, rojo más de 15 %.
         Déficit indica que la proyección supera lo asignado; superávit, que queda por debajo.
       </p>
+
+      <DesglosePartidas partidas={desglose} />
     </>
   )
 }

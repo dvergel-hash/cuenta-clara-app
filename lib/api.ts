@@ -6,6 +6,7 @@ import type { LicitacionInput, ObservacionInput } from './schemas'
 import { canonico, sha256 } from './sha256'
 import type {
   ConfirmacionCotizacion,
+  DesglosePartida,
   ConfirmacionObservacion,
   SeguimientoObservacion,
   Cotizacion,
@@ -275,5 +276,40 @@ export async function crearLicitacion(datos: LicitacionInput): Promise<Licitacio
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(datos),
+  })
+}
+
+export async function getDesglosePartidas(): Promise<DesglosePartida[]> {
+  const [partidas, lics] = await Promise.all([fuente.partidas(), fuente.licitaciones()])
+  const detalles = await Promise.all(lics.filter((l) => l.estado !== 'abierto').map((l) => getLicitacion(l.id)))
+  const cerradas = new Map(detalles.filter((d) => d !== null).map((d) => [d!.licitacion.id, d!]))
+
+  return partidas.map((p) => {
+    const propias = lics.filter((l) => l.partida_id === p.id)
+    const abiertas = propias.filter((l) => l.estado === 'abierto')
+    let ofertado = 0
+    let adjudicado = 0
+    let nAdjudicadas = 0
+    let nCerradas = 0
+    for (const l of propias.filter((x) => x.estado !== 'abierto')) {
+      const ofertas = cerradas.get(l.id)?.cotizaciones ?? []
+      if (!ofertas.length) continue
+      nCerradas++
+      ofertado += ofertas[0].total_ars
+      if (l.estado === 'aprobado') {
+        const ganadora = ofertas.find((c) => c.proveedor_id === l.proveedor_adjudicado_id) ?? ofertas[0]
+        adjudicado += ganadora.total_ars
+        nAdjudicadas++
+      }
+    }
+    return {
+      ...p,
+      abiertas: abiertas.length,
+      estimado_abierto: abiertas.reduce((s, l) => s + l.monto_estimado, 0),
+      cerradas: nCerradas,
+      ofertado_cerrado: ofertado,
+      adjudicadas: nAdjudicadas,
+      adjudicado,
+    }
   })
 }

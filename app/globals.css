@@ -82,3 +82,11 @@
     @apply bg-background text-foreground font-sans;
   }
 }
+
+/* Leaflet adds a 1.3em margin to popup paragraphs; spacing is handled with gap instead. */
+.leaflet-container .leaflet-popup-content p {
+  margin: 0;
+}
+.leaflet-container .leaflet-popup-content {
+  margin: 12px 14px;
+}

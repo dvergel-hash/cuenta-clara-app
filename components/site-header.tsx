@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 
 const secciones = [
   { href: '/licitaciones', label: 'Licitaciones' },
+  { href: '/mapa', label: 'Mapa' },
   { href: '/presupuesto', label: 'Presupuesto' },
   { href: '/proveedores', label: 'Proveedores' },
   { href: '/portal', label: 'Portal de proveedores' },

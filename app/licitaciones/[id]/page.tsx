@@ -14,6 +14,7 @@ import { ReferenciaPanel } from '@/components/licitacion/referencia-panel'
 import { SenalesAlerta } from '@/components/licitacion/senales-alerta'
 import { VerificarIntegridad } from '@/components/licitacion/verificar-integridad'
 import { CerrarLicitacion } from '@/components/licitacion/cerrar-licitacion'
+import { SintesisIA } from '@/components/licitacion/sintesis-ia'
 import { getLicitacion } from '@/lib/api'
 import { sesionActual } from '@/lib/sesion'
 import { fechaCierre, formatoFecha, formatoMoneda } from '@/lib/format'
@@ -141,6 +142,8 @@ export default async function LicitacionPage({
           <CotizacionesTabla cotizaciones={cotizaciones} adjudicadoId={licitacion.proveedor_adjudicado_id} />
         )}
       </section>
+
+      {usuario?.rol === 'admin' && licitacion.estado !== 'abierto' && <SintesisIA id={licitacion.id} />}
 
       <SenalesAlerta senales={detalle.senales} />
 

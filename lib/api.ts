@@ -1,51 +1,98 @@
 import { MIN_PUNTOS_REFERENCIA, proyeccionLineal, totalCotizacion } from './calculos'
+import { ErrorApi, ErrorConexion } from './errores'
 import * as mock from './mock'
+import { esSellada, ocultarBusqueda, type Fuente } from './publicacion'
 import { canonico, sha256 } from './sha256'
 import type {
-  BusquedaAgente,
   ConfirmacionCotizacion,
   Cotizacion,
-  CotizacionRegistrada,
   Decision,
   EstadoLicitacion,
-  Licitacion,
   LicitacionDetalle,
   LicitacionResumen,
   Partida,
   ProyeccionPartida,
-  Proveedor,
   RankingProveedor,
 } from './types'
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? '').replace(/\/$/, '')
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? '').replace(/\/$/, '') || '/api'
 
-/** true cuando no hay API configurada y se usan los datos sintéticos. */
-export const modoDemo = API_BASE === ''
+/** true cuando los datos vienen de la base propia (Route Handlers de /api). */
+export const apiInterna = API_BASE === '/api'
 
-async function obtener<T>(ruta: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${ruta}`, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`Error ${res.status} al consultar ${ruta}`)
-  return res.json() as Promise<T>
+const enDesarrollo = process.env.NODE_ENV === 'development'
+
+async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${ruta}`, { cache: 'no-store', ...init })
+  } catch {
+    throw new ErrorConexion(`No se pudo contactar ${API_BASE}`)
+  }
+  const cuerpo = (await res.json().catch(() => null)) as (T & { error?: string }) | null
+  if (res.status === 503) throw new ErrorConexion(cuerpo?.error)
+  if (!res.ok) throw new ErrorApi(res.status, cuerpo?.error ?? `El servidor respondió ${res.status}`)
+  return cuerpo as T
 }
 
-const fuente = {
-  partidas: () => (modoDemo ? Promise.resolve(mock.partidas) : obtener<Partida[]>('/partidas')),
-  proveedores: () => (modoDemo ? Promise.resolve(mock.proveedores) : obtener<Proveedor[]>('/proveedores')),
-  licitaciones: () => (modoDemo ? Promise.resolve(mock.licitaciones) : obtener<Licitacion[]>('/licitaciones')),
-  cotizaciones: (pedidoId?: string) =>
-    modoDemo
-      ? Promise.resolve(pedidoId ? mock.cotizaciones.filter((c) => c.pedido_id === pedidoId) : mock.cotizaciones)
-      : obtener<CotizacionRegistrada[]>(
-          pedidoId ? `/cotizaciones?pedido_id=${encodeURIComponent(pedidoId)}` : '/cotizaciones',
-        ),
-  busquedas: (pedidoId: string) =>
-    modoDemo
-      ? Promise.resolve(mock.busquedas.filter((b) => b.pedido_id === pedidoId))
-      : obtener<BusquedaAgente[]>(`/busquedas?pedido_id=${encodeURIComponent(pedidoId)}`),
-  decisiones: (variante: 'original' | 'alterado' = 'original') =>
-    modoDemo
-      ? Promise.resolve(variante === 'alterado' ? mock.registroAlterado : mock.registro)
-      : obtener<Decision[]>('/decisiones'),
+const q = (pedidoId: string) => `?pedido_id=${encodeURIComponent(pedidoId)}`
+
+const fuenteHttp: Fuente = {
+  partidas: () => pedir('/partidas'),
+  proveedores: () => pedir('/proveedores'),
+  licitaciones: () => pedir('/licitaciones'),
+  cotizaciones: (id) => pedir(`/cotizaciones${q(id)}`),
+  busquedas: (id) => pedir(`/busquedas${q(id)}`),
+  decisiones: () => pedir('/decisiones'),
+}
+
+/** Mismas reglas de publicación que la API, aplicadas sobre los datos sintéticos. */
+const abierto = (id: string) => mock.licitaciones.find((l) => l.id === id)?.estado === 'abierto'
+const fuenteMock: Fuente = {
+  partidas: async () => mock.partidas,
+  proveedores: async () => mock.proveedores,
+  licitaciones: async () => mock.licitaciones,
+  cotizaciones: async (id) => {
+    const propias = mock.cotizaciones.filter((c) => c.pedido_id === id)
+    return abierto(id) ? { pedido_id: id, estado: 'abierto', cantidad: propias.length } : propias
+  },
+  busquedas: async (id) => {
+    const propias = mock.busquedas.filter((b) => b.pedido_id === id)
+    return abierto(id) ? propias.map(ocultarBusqueda) : propias
+  },
+  decisiones: async () => mock.registro,
+}
+
+/** En el servidor se consulta la base directamente: no hace falta un salto HTTP a la propia app. */
+async function fuentePrincipal(): Promise<Fuente> {
+  if (typeof window === 'undefined' && apiInterna) return (await import('./server/repositorio')).fuenteDb
+  return fuenteHttp
+}
+
+let avisado = false
+function conRespaldo<K extends keyof Fuente>(clave: K) {
+  return (async (...args: Parameters<Fuente[K]>) => {
+    const principal = await fuentePrincipal()
+    try {
+      return await (principal[clave] as (...a: unknown[]) => Promise<unknown>)(...args)
+    } catch (e) {
+      if (!(enDesarrollo && e instanceof ErrorConexion)) throw e
+      if (!avisado) {
+        console.warn(`[api] ${e.message}. Usando datos mock (solo en desarrollo).`)
+        avisado = true
+      }
+      return (fuenteMock[clave] as (...a: unknown[]) => Promise<unknown>)(...args)
+    }
+  }) as Fuente[K]
+}
+
+const fuente: Fuente = {
+  partidas: conRespaldo('partidas'),
+  proveedores: conRespaldo('proveedores'),
+  licitaciones: conRespaldo('licitaciones'),
+  cotizaciones: conRespaldo('cotizaciones'),
+  busquedas: conRespaldo('busquedas'),
+  decisiones: conRespaldo('decisiones'),
 }
 
 export const ESTADOS: EstadoLicitacion[] = ['abierto', 'aprobado', 'observado', 'rechazado']
@@ -68,39 +115,29 @@ export async function getLicitacionesAbiertas(): Promise<LicitacionResumen[]> {
 }
 
 export async function getLicitacion(id: string): Promise<LicitacionDetalle | null> {
-  const [lics, parts, provs, cots, decs, buss] = await Promise.all([
-    fuente.licitaciones(),
-    fuente.partidas(),
-    fuente.proveedores(),
-    fuente.cotizaciones(id),
-    fuente.decisiones(),
-    fuente.busquedas(id),
-  ])
+  const [lics, parts, provs] = await Promise.all([fuente.licitaciones(), fuente.partidas(), fuente.proveedores()])
   const licitacion = lics.find((l) => l.id === id)
   if (!licitacion) return null
   const partida = parts.find((p) => p.id === licitacion.partida_id)!
-  const propias = cots.filter((c) => c.pedido_id === id)
-  const busquedas = buss
-    .filter((b) => b.pedido_id === id)
-    .sort((a, b) => a.fecha.localeCompare(b.fecha))
 
-  // Ofertas selladas: los montos nunca salen de esta capa mientras el pedido esté abierto.
-  if (licitacion.estado === 'abierto') {
+  const [cots, busquedas, decs] = await Promise.all([fuente.cotizaciones(id), fuente.busquedas(id), fuente.decisiones()])
+
+  // Ofertas selladas: la fuente solo informa la cantidad mientras el pedido esté abierto.
+  if (esSellada(cots)) {
     return {
       licitacion,
       partida,
       decision: null,
-      cantidad_ofertas: propias.length,
+      cantidad_ofertas: cots.cantidad,
       cotizaciones: null,
       puntos_referencia: 0,
       referencia_concluyente: false,
-      // Las búsquedas se publican sin precio ni destino para no revelar oferentes ni montos.
-      busquedas: busquedas.map(({ precio: _p, cotizacion_id: _c, nota: _n, ...b }) => ({ ...b, destino: null })),
+      busquedas,
     }
   }
 
   const decision = decs.find((d) => d.pedido_id === id) ?? null
-  const puntos = propias.length + (decision?.referencia.fuentes.length ?? 0)
+  const puntos = cots.length + (decision?.referencia.fuentes.length ?? 0)
   const concluyente = decision !== null && puntos >= MIN_PUNTOS_REFERENCIA
   const referencia = decision?.referencia.valor ?? 0
 
@@ -108,8 +145,8 @@ export async function getLicitacion(id: string): Promise<LicitacionDetalle | nul
     licitacion,
     partida,
     decision,
-    cantidad_ofertas: propias.length,
-    cotizaciones: propias
+    cantidad_ofertas: cots.length,
+    cotizaciones: cots
       .map((c) => {
         const total = totalCotizacion(c)
         return {
@@ -135,8 +172,7 @@ export async function getProyeccionPresupuesto(): Promise<ProyeccionPartida[]> {
 }
 
 export async function getRankingProveedores(): Promise<RankingProveedor[]> {
-  const proveedores = await fuente.proveedores()
-  const lics = await fuente.licitaciones()
+  const [proveedores, lics] = await Promise.all([fuente.proveedores(), fuente.licitaciones()])
   const cerradas = lics.filter((l) => l.estado !== 'abierto')
   const detalles = await Promise.all(cerradas.map((l) => getLicitacion(l.id)))
   const cotizaciones = detalles.flatMap((d) => d?.cotizaciones ?? [])
@@ -152,33 +188,35 @@ export async function getRankingProveedores(): Promise<RankingProveedor[]> {
         observaciones: conDesvio.filter((d) => d > 0.25).length,
       }
     })
+    .filter((p) => p.cotizaciones > 0 || p.id.startsWith('PRV-'))
     .sort((a, b) => (b.desvio_promedio ?? -Infinity) - (a.desvio_promedio ?? -Infinity))
 }
 
+/** Altera el contenido del tercer registro sin recalcular su hash, para demostrar la verificación. */
+function alterar(registros: Decision[]): Decision[] {
+  const i = Math.min(2, registros.length - 1)
+  return registros.map((d, j) =>
+    j === i ? { ...d, referencia: { ...d.referencia, valor: Math.round(d.referencia.valor * 1.18) } } : d,
+  )
+}
+
 export async function getRegistro(variante: 'original' | 'alterado' = 'original'): Promise<Decision[]> {
-  const registros = await fuente.decisiones(variante)
-  return [...registros].sort((a, b) => a.fecha.localeCompare(b.fecha))
+  const registros = [...(await fuente.decisiones())].sort((a, b) => a.fecha.localeCompare(b.fecha))
+  return variante === 'alterado' ? alterar(registros) : registros
 }
 
 export async function enviarCotizacion(cotizacion: Cotizacion): Promise<ConfirmacionCotizacion> {
   const datos: Cotizacion = { ...cotizacion, origen: 'portal' }
-
-  if (modoDemo) {
-    await new Promise((r) => setTimeout(r, 700))
+  try {
+    return await pedir<ConfirmacionCotizacion>('/cotizaciones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(datos),
+    })
+  } catch (e) {
+    if (!(enDesarrollo && e instanceof ErrorConexion)) throw e
+    console.warn('[api] Cotización no persistida: base no disponible (desarrollo).')
     const hash = sha256(canonico(datos))
     return { id: `COT-${hash.slice(0, 8).toUpperCase()}`, hash, recibida: new Date().toISOString() }
-  }
-
-  const res = await fetch(`${API_BASE}/cotizaciones`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(datos),
-  })
-  if (!res.ok) throw new Error(`El servidor respondió ${res.status}`)
-  const respuesta = (await res.json()) as Partial<ConfirmacionCotizacion>
-  return {
-    id: respuesta.id ?? 'sin-id',
-    hash: respuesta.hash ?? sha256(canonico(datos)),
-    recibida: respuesta.recibida ?? new Date().toISOString(),
   }
 }

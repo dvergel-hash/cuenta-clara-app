@@ -1,4 +1,4 @@
-import { modoDemo } from '@/lib/api'
+import { apiInterna } from '@/lib/api'
 
 export function SiteFooter() {
   return (
@@ -7,7 +7,7 @@ export function SiteFooter() {
         <p className="font-medium text-foreground">Los datos de esta demo son sintéticos</p>
         <p>
           Cuenta Clara · Fuente de datos:{' '}
-          <span className="font-mono text-xs">{modoDemo ? 'mock local' : 'API pública'}</span>
+          <span className="font-mono text-xs">{apiInterna ? 'Postgres (Neon)' : 'API pública'}</span>
         </p>
       </div>
     </footer>

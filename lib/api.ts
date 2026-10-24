@@ -1,10 +1,13 @@
-import { MIN_PUNTOS_REFERENCIA, proyeccionLineal, totalCotizacion } from './calculos'
+import { MIN_PUNTOS_REFERENCIA, detectarSenales, proyeccionLineal, totalCotizacion } from './calculos'
 import { ErrorApi, ErrorConexion } from './errores'
 import * as mock from './mock'
 import { esSellada, ocultarBusqueda, type Fuente } from './publicacion'
+import type { ObservacionInput } from './schemas'
 import { canonico, sha256 } from './sha256'
 import type {
   ConfirmacionCotizacion,
+  ConfirmacionObservacion,
+  SeguimientoObservacion,
   Cotizacion,
   Decision,
   EstadoLicitacion,
@@ -44,6 +47,7 @@ const fuenteHttp: Fuente = {
   cotizaciones: (id) => pedir(`/cotizaciones${q(id)}`),
   busquedas: (id) => pedir(`/busquedas${q(id)}`),
   decisiones: () => pedir('/decisiones'),
+  observaciones: (id) => pedir(`/observaciones?licitacion_id=${encodeURIComponent(id)}`),
 }
 
 /** Mismas reglas de publicación que la API, aplicadas sobre los datos sintéticos. */
@@ -61,6 +65,10 @@ const fuenteMock: Fuente = {
     return abierto(id) ? propias.map(ocultarBusqueda) : propias
   },
   decisiones: async () => mock.registro,
+  observaciones: async (id) =>
+    mock.observaciones
+      .filter((o) => o.licitacion_id === id && o.estado === 'publicada')
+      .map(({ codigo: _c, estado: _e, revisada: _r, ...publica }) => publica),
 }
 
 /** En el servidor se consulta la base directamente: no hace falta un salto HTTP a la propia app. */
@@ -93,6 +101,7 @@ const fuente: Fuente = {
   cotizaciones: conRespaldo('cotizaciones'),
   busquedas: conRespaldo('busquedas'),
   decisiones: conRespaldo('decisiones'),
+  observaciones: conRespaldo('observaciones'),
 }
 
 export const ESTADOS: EstadoLicitacion[] = ['abierto', 'aprobado', 'observado', 'rechazado']
@@ -120,7 +129,12 @@ export async function getLicitacion(id: string): Promise<LicitacionDetalle | nul
   if (!licitacion) return null
   const partida = parts.find((p) => p.id === licitacion.partida_id)!
 
-  const [cots, busquedas, decs] = await Promise.all([fuente.cotizaciones(id), fuente.busquedas(id), fuente.decisiones()])
+  const [cots, busquedas, decs, observaciones] = await Promise.all([
+    fuente.cotizaciones(id),
+    fuente.busquedas(id),
+    fuente.decisiones(),
+    fuente.observaciones(id),
+  ])
 
   // Ofertas selladas: la fuente solo informa la cantidad mientras el pedido esté abierto.
   if (esSellada(cots)) {
@@ -133,8 +147,12 @@ export async function getLicitacion(id: string): Promise<LicitacionDetalle | nul
       puntos_referencia: 0,
       referencia_concluyente: false,
       busquedas,
+      senales: null,
+      observaciones_publicadas: observaciones.length,
     }
   }
+
+  const senales = detectarSenales({ licitacion, cotizaciones: cots, licitaciones: lics, decisiones: decs, proveedores: provs })
 
   const decision = decs.find((d) => d.pedido_id === id) ?? null
   const puntos = cots.length + (decision?.referencia.fuentes.length ?? 0)
@@ -160,6 +178,8 @@ export async function getLicitacion(id: string): Promise<LicitacionDetalle | nul
     puntos_referencia: puntos,
     referencia_concluyente: concluyente,
     busquedas,
+    senales,
+    observaciones_publicadas: observaciones.length,
   }
 }
 
@@ -203,6 +223,32 @@ function alterar(registros: Decision[]): Decision[] {
 export async function getRegistro(variante: 'original' | 'alterado' = 'original'): Promise<Decision[]> {
   const registros = [...(await fuente.decisiones())].sort((a, b) => a.fecha.localeCompare(b.fecha))
   return variante === 'alterado' ? alterar(registros) : registros
+}
+
+export async function enviarObservacion(datos: ObservacionInput): Promise<ConfirmacionObservacion> {
+  return pedir<ConfirmacionObservacion>('/observaciones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(datos),
+  })
+}
+
+export async function consultarObservacion(codigo: string): Promise<SeguimientoObservacion | null> {
+  if (typeof window === 'undefined' && apiInterna) {
+    const { consultarSeguimiento } = await import('./server/repositorio')
+    try {
+      return await consultarSeguimiento(codigo)
+    } catch (e) {
+      if (e instanceof ErrorApi && e.status === 404) return null
+      throw e
+    }
+  }
+  try {
+    return await pedir<SeguimientoObservacion>(`/observaciones/${encodeURIComponent(codigo)}`)
+  } catch (e) {
+    if (e instanceof ErrorApi && e.status === 404) return null
+    throw e
+  }
 }
 
 export async function enviarCotizacion(cotizacion: Cotizacion): Promise<ConfirmacionCotizacion> {

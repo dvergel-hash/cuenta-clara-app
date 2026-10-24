@@ -2,6 +2,34 @@ import { z } from 'zod'
 
 const numero = (msg = 'Ingresá un número válido') => z.number(msg)
 
+export const CATEGORIAS_OBSERVACION = ['precio', 'proveedor', 'especificaciones', 'plazo', 'otra'] as const
+
+const opcional = (s: z.ZodString) =>
+  z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), s.optional())
+
+export const observacionSchema = z.object({
+  licitacion_id: z.string().trim().min(1, 'Elegí la licitación que querés observar'),
+  categoria: z.enum(CATEGORIAS_OBSERVACION, 'Elegí una categoría'),
+  descripcion: z
+    .string()
+    .trim()
+    .min(30, 'Contá un poco más: al menos 30 caracteres')
+    .max(2000, 'Máximo 2000 caracteres'),
+  evidencia_url: opcional(
+    z
+      .string()
+      .trim()
+      .url('Ingresá un enlace válido')
+      .regex(/^https?:\/\//, 'El enlace debe empezar con http:// o https://'),
+  ),
+  contacto: opcional(z.string().trim().max(120, 'Máximo 120 caracteres')),
+  acepta_publicacion: z.literal(true, 'Necesitamos tu aceptación para poder publicarla'),
+  /** Honeypot: invisible para personas; si llega con contenido, el envío se descarta en silencio. */
+  sitio_web: z.string().optional(),
+})
+
+export type ObservacionInput = z.infer<typeof observacionSchema>
+
 export const itemCotizacionSchema = z.object({
   descripcion: z.string().trim().min(1, 'Describí el ítem'),
   sku_modelo: z.string().trim().optional(),

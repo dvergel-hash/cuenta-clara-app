@@ -3,11 +3,14 @@ import { ErrorApi } from '../errores'
 import { fechaCierre, formatoMoneda } from '../format'
 import * as mock from '../mock'
 import { ocultarBusqueda, type Fuente, type RespuestaCotizaciones } from '../publicacion'
-import type { CotizacionInput } from '../schemas'
+import type { CotizacionInput, ObservacionInput } from '../schemas'
 import { canonico, sha256 } from '../sha256'
 import type {
   BusquedaAgente,
   ConfirmacionCotizacion,
+  ConfirmacionObservacion,
+  ObservacionPublica,
+  SeguimientoObservacion,
   Cotizacion,
   CotizacionRegistrada,
   Decision,
@@ -52,15 +55,15 @@ export function listarPartidas() {
 
 export function listarProveedores() {
   return consultar(async () => {
-    const filas = await db()`SELECT id, nombre, cuit FROM proveedores ORDER BY nombre`
-    return filas as Proveedor[]
+    const filas = await db()`SELECT id, nombre, cuit, fecha_alta FROM proveedores ORDER BY nombre`
+    return filas.map((f) => sinNulos<Proveedor>(f))
   })
 }
 
 export function listarLicitaciones() {
   return consultar(async () => {
     const filas = await db()`
-      SELECT id, descripcion, partida_id, estado, fecha_cierre, monto_estimado, proveedor_adjudicado_id
+      SELECT id, descripcion, partida_id, estado, fecha_cierre, monto_estimado, proveedor_adjudicado_id, organismo, rubro
       FROM licitaciones ORDER BY fecha_cierre DESC`
     return filas.map((f) => sinNulos<Licitacion>(f))
   })
@@ -68,7 +71,7 @@ export function listarLicitaciones() {
 
 async function buscarLicitacion(id: string) {
   const [fila] = await db()`
-    SELECT id, descripcion, partida_id, estado, fecha_cierre, monto_estimado, proveedor_adjudicado_id
+    SELECT id, descripcion, partida_id, estado, fecha_cierre, monto_estimado, proveedor_adjudicado_id, organismo, rubro
     FROM licitaciones WHERE id = ${id}`
   if (!fila) throw new ErrorApi(404, `No existe el pedido ${id}`)
   return sinNulos<Licitacion>(fila)
@@ -121,6 +124,77 @@ export function listarDecisiones() {
   })
 }
 
+const isoUtc = (v: unknown) => new Date(v as string).toISOString()
+
+/** Solo publicadas, y sin contacto ni código: nada que permita identificar a quien observó. */
+export function listarObservacionesPublicadas(licitacionId: string) {
+  return consultar(async () => {
+    const filas = await db()`
+      SELECT licitacion_id, categoria, descripcion, evidencia_url, creada
+      FROM observaciones WHERE licitacion_id = ${licitacionId} AND estado = 'publicada'
+      ORDER BY creada DESC`
+    return filas.map((f) => sinNulos<ObservacionPublica>({ ...f, creada: isoUtc(f.creada) }))
+  })
+}
+
+export function consultarSeguimiento(codigo: string) {
+  return consultar(async () => {
+    const [fila] = await db()`
+      SELECT codigo, licitacion_id, categoria, estado, creada, revisada
+      FROM observaciones WHERE codigo = ${codigo}`
+    if (!fila) throw new ErrorApi(404, `No encontramos una observación con el código ${codigo}`)
+    return sinNulos<SeguimientoObservacion>({
+      ...fila,
+      creada: isoUtc(fila.creada),
+      revisada: fila.revisada ? isoUtc(fila.revisada) : null,
+    })
+  })
+}
+
+export const LIMITE_OBSERVACIONES_POR_HORA = 3
+
+// Sin I, O, 0 ni 1: el código se dicta y se copia a mano.
+const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+function generarCodigo() {
+  const bytes = crypto.getRandomValues(new Uint8Array(8))
+  const c = Array.from(bytes, (b) => ALFABETO_CODIGO[b % ALFABETO_CODIGO.length]).join('')
+  return `CC-${c.slice(0, 4)}-${c.slice(4)}`
+}
+
+/** La IP nunca se guarda: solo un hash con pimienta, suficiente para contar envíos por hora. */
+export function hashIp(ip: string) {
+  return sha256(`observaciones:${process.env.SEED_TOKEN ?? ''}:${ip}`)
+}
+
+export function registrarObservacion(
+  entrada: Omit<ObservacionInput, 'sitio_web'>,
+  ipHash: string,
+): Promise<ConfirmacionObservacion> {
+  return consultar(async () => {
+    const sql = db()
+    await buscarLicitacion(entrada.licitacion_id)
+    const [{ recientes }] = await sql`
+      SELECT count(*)::int AS recientes FROM observaciones
+      WHERE ip_hash = ${ipHash} AND creada > now() - interval '1 hour'`
+    if ((recientes as number) >= LIMITE_OBSERVACIONES_POR_HORA) {
+      throw new ErrorApi(429, 'Llegaste al límite de 3 observaciones por hora. Probá de nuevo más tarde.')
+    }
+
+    for (let intento = 0; intento < 3; intento++) {
+      const codigo = generarCodigo()
+      const [fila] = await sql`
+        INSERT INTO observaciones (codigo, licitacion_id, categoria, descripcion, evidencia_url, contacto,
+                                   acepta_publicacion, estado, ip_hash)
+        VALUES (${codigo}, ${entrada.licitacion_id}, ${entrada.categoria}, ${entrada.descripcion},
+                ${entrada.evidencia_url ?? null}, ${entrada.contacto ?? null}, true, 'pendiente', ${ipHash})
+        ON CONFLICT (codigo) DO NOTHING
+        RETURNING creada`
+      if (fila) return { codigo, estado: 'pendiente', creada: isoUtc(fila.creada) }
+    }
+    throw new Error('No se pudo generar un código de seguimiento único')
+  })
+}
+
 export const fuenteDb: Fuente = {
   partidas: listarPartidas,
   proveedores: listarProveedores,
@@ -128,6 +202,7 @@ export const fuenteDb: Fuente = {
   cotizaciones: listarCotizaciones,
   busquedas: listarBusquedas,
   decisiones: listarDecisiones,
+  observaciones: listarObservacionesPublicadas,
 }
 
 // ---------- Escrituras ----------
@@ -242,7 +317,7 @@ export function cerrarLicitacion(id: string, ahora = new Date()): Promise<Decisi
 
     const [[partida], provs, cotizaciones, busquedas, [ultima], [{ cantidad }]] = await Promise.all([
       sql`SELECT id, codigo, nombre, asignado, ejecutado FROM partidas WHERE id = ${licitacion.partida_id}`,
-      sql`SELECT id, nombre, cuit FROM proveedores`,
+      sql`SELECT id, nombre, cuit, fecha_alta FROM proveedores`,
       cotizacionesDe(id),
       busquedasDe(id),
       sql`SELECT hash FROM decisiones ORDER BY fecha::timestamptz DESC, id DESC LIMIT 1`,
@@ -310,13 +385,19 @@ export function sembrar() {
         (p) => sql`INSERT INTO partidas (id, codigo, nombre, asignado, ejecutado)
                    VALUES (${p.id}, ${p.codigo}, ${p.nombre}, ${p.asignado}, ${p.ejecutado}) ON CONFLICT (id) DO NOTHING`,
       ),
+      // Las columnas agregadas después (fecha_alta, organismo, rubro) se completan si están vacías;
+      // el resto de lo ya existente no se toca.
       ...mock.proveedores.map(
-        (p) => sql`INSERT INTO proveedores (id, nombre, cuit) VALUES (${p.id}, ${p.nombre}, ${p.cuit}) ON CONFLICT DO NOTHING`,
+        (p) => sql`INSERT INTO proveedores (id, nombre, cuit, fecha_alta) VALUES (${p.id}, ${p.nombre}, ${p.cuit}, ${p.fecha_alta ?? null})
+                   ON CONFLICT (id) DO UPDATE SET fecha_alta = COALESCE(proveedores.fecha_alta, EXCLUDED.fecha_alta)`,
       ),
       ...mock.licitaciones.map(
-        (l) => sql`INSERT INTO licitaciones (id, descripcion, partida_id, estado, fecha_cierre, monto_estimado, proveedor_adjudicado_id)
+        (l) => sql`INSERT INTO licitaciones (id, descripcion, partida_id, estado, fecha_cierre, monto_estimado,
+                                             proveedor_adjudicado_id, organismo, rubro)
                    VALUES (${l.id}, ${l.descripcion}, ${l.partida_id}, ${l.estado}, ${l.fecha_cierre}, ${l.monto_estimado},
-                           ${l.proveedor_adjudicado_id ?? null}) ON CONFLICT (id) DO NOTHING`,
+                           ${l.proveedor_adjudicado_id ?? null}, ${l.organismo ?? null}, ${l.rubro ?? null})
+                   ON CONFLICT (id) DO UPDATE SET organismo = COALESCE(licitaciones.organismo, EXCLUDED.organismo),
+                                                  rubro = COALESCE(licitaciones.rubro, EXCLUDED.rubro)`,
       ),
       ...mock.cotizaciones.map(
         (c) => sql`INSERT INTO cotizaciones (id, hash, pedido_id, proveedor_id, cuit, fecha_emision, validez_dias, moneda,
@@ -336,13 +417,21 @@ export function sembrar() {
                    VALUES (${d.id}, ${d.pedido_id}, ${d.fecha}, ${d.estado}, ${d.motivo}, ${JSON.stringify(d.referencia)}::jsonb,
                            ${d.saldo_partida_antes}, ${d.saldo_partida_despues}, ${d.hash_prev}, ${d.hash}) ON CONFLICT DO NOTHING`,
       ),
+      ...mock.observaciones.map(
+        (o) => sql`INSERT INTO observaciones (codigo, licitacion_id, categoria, descripcion, evidencia_url, acepta_publicacion,
+                                              estado, ip_hash, creada, revisada)
+                   VALUES (${o.codigo}, ${o.licitacion_id}, ${o.categoria}, ${o.descripcion}, ${o.evidencia_url ?? null}, true,
+                           ${o.estado}, 'semilla', ${o.creada}::timestamptz, ${o.revisada ?? null}::timestamptz)
+                   ON CONFLICT (codigo) DO NOTHING`,
+      ),
     ]
     await sql.transaction(consultas)
 
     const [conteo] = await sql`
       SELECT (SELECT count(*) FROM partidas)::int AS partidas, (SELECT count(*) FROM proveedores)::int AS proveedores,
              (SELECT count(*) FROM licitaciones)::int AS licitaciones, (SELECT count(*) FROM cotizaciones)::int AS cotizaciones,
-             (SELECT count(*) FROM busquedas)::int AS busquedas, (SELECT count(*) FROM decisiones)::int AS decisiones`
+             (SELECT count(*) FROM busquedas)::int AS busquedas, (SELECT count(*) FROM decisiones)::int AS decisiones,
+             (SELECT count(*) FROM observaciones)::int AS observaciones`
     return conteo as Record<string, number>
   })
 }

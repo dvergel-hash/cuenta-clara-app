@@ -4,11 +4,13 @@ import { FormularioLicitacion } from '@/components/licitaciones/formulario-licit
 import { PageHeader } from '@/components/page-header'
 import { buttonVariants } from '@/components/ui/button'
 import { getPartidas } from '@/lib/api'
+import { exigirRol } from '@/lib/sesion'
 
 export const metadata: Metadata = { title: 'Nueva licitación' }
 export const dynamic = 'force-dynamic'
 
 export default async function NuevaLicitacionPage() {
+  await exigirRol(['admin'], '/licitaciones/nueva')
   const partidas = await getPartidas()
 
   return (

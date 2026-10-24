@@ -2,6 +2,7 @@ import { ErrorApi } from '@/lib/errores'
 import { cotizacionSchema } from '@/lib/schemas'
 import { pedidoIdRequerido, responder } from '@/lib/server/http'
 import { listarCotizaciones, registrarCotizacion } from '@/lib/server/repositorio'
+import { exigirRolApi } from '@/lib/sesion'
 
 const MAX_ITEMS = 200
 
@@ -11,6 +12,7 @@ export function GET(req: Request) {
 
 export function POST(req: Request) {
   return responder(async () => {
+    await exigirRolApi(['proveedor', 'admin'])
     const cuerpo = await req.json().catch(() => {
       throw new ErrorApi(400, 'El cuerpo debe ser JSON válido')
     })

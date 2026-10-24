@@ -1,10 +1,12 @@
 import type { Metadata } from 'next'
 import { ConfiguracionAgentes } from '@/components/agentes/configuracion-agentes'
 import { PageHeader } from '@/components/page-header'
+import { exigirRol } from '@/lib/sesion'
 
 export const metadata: Metadata = { title: 'Agentes y flujos' }
 
-export default function AgentesPage() {
+export default async function AgentesPage() {
+  await exigirRol(['admin'], '/agentes')
   return (
     <>
       <PageHeader

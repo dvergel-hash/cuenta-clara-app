@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google'
 import { SiteFooter } from '@/components/site-footer'
 import { SiteHeader } from '@/components/site-header'
+import { sesionActual } from '@/lib/sesion'
 import './globals.css'
 
 const plexSans = IBM_Plex_Sans({
@@ -31,11 +32,12 @@ export const viewport: Viewport = {
   themeColor: '#f6f7f9',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const usuario = await sesionActual()
   return (
     <html lang="es-AR" className={`${plexSans.variable} ${plexMono.variable} bg-background`}>
       <body className="flex min-h-dvh flex-col font-sans antialiased">
@@ -45,7 +47,7 @@ export default function RootLayout({
         >
           Saltar al contenido
         </a>
-        <SiteHeader />
+        <SiteHeader usuario={usuario} />
         <main id="contenido" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:px-6 md:py-10">
           {children}
         </main>

@@ -6,11 +6,11 @@ import { selectClass } from '@/components/form-styles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { enviarCotizacion } from '@/lib/api'
-import { formatoFecha, formatoMoneda } from '@/lib/format'
+import { fechaCierre, formatoFechaHora, formatoMoneda, formatoMonedaEn } from '@/lib/format'
 import { cotizacionSchema } from '@/lib/schemas'
-import type { ConfirmacionCotizacion, Cotizacion } from '@/lib/types'
+import type { Cotizacion } from '@/lib/types'
 import { Campo } from './campo'
-import { Confirmacion } from './confirmacion'
+import { Confirmacion, type DatosComprobante } from './confirmacion'
 
 type PedidoOpcion = { id: string; descripcion: string; cierre: string }
 type ItemForm = { key: number; descripcion: string; sku_modelo: string; cantidad: string; unidad: string; precio_unitario: string }
@@ -28,6 +28,23 @@ const itemVacio = (key: number): ItemForm => ({
   precio_unitario: '',
 })
 
+function validar(datos: Cotizacion, adjunto: File | null): Errores {
+  const errores: Errores = {}
+  const resultado = cotizacionSchema.safeParse(datos)
+  if (!resultado.success) {
+    for (const issue of resultado.error.issues) {
+      const clave = issue.path.join('.')
+      if (!errores[clave]) errores[clave] = issue.message
+    }
+  }
+  // zod skips object-level refinements while any field fails, so check the USD exchange rate up front.
+  if (datos.moneda === 'USD' && datos.tipo_cambio_usado === undefined && !errores.tipo_cambio_usado) {
+    errores.tipo_cambio_usado = 'Indicá el tipo de cambio usado'
+  }
+  if (adjunto && adjunto.size > MAX_ADJUNTO) errores.adjunto_url = 'El adjunto no puede superar 10 MB'
+  return errores
+}
+
 export function FormularioCotizacion({ pedidos, pedidoInicial }: { pedidos: PedidoOpcion[]; pedidoInicial: string }) {
   const uid = useId()
   const [pedidoId, setPedidoId] = useState(pedidoInicial)
@@ -42,14 +59,18 @@ export function FormularioCotizacion({ pedidos, pedidoInicial }: { pedidos: Pedi
   const [formaPago, setFormaPago] = useState('')
   const [garantia, setGarantia] = useState('')
   const [adjunto, setAdjunto] = useState<File | null>(null)
-  const [errores, setErrores] = useState<Errores>({})
+  const [intentoEnvio, setIntentoEnvio] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null)
-  const [confirmacion, setConfirmacion] = useState<(ConfirmacionCotizacion & { pedido: string; total: number }) | null>(null)
+  const [confirmacion, setConfirmacion] = useState<DatosComprobante | null>(null)
 
   const pedido = pedidos.find((p) => p.id === pedidoId)
+  const cierre = pedido ? fechaCierre(pedido.cierre) : null
   const tc = moneda === 'USD' ? num(tipoCambio) : 1
-  const total = items.reduce((s, i) => s + (num(i.cantidad) || 0) * (num(i.precio_unitario) || 0), 0)
+  const tcValido = Number.isFinite(tc) && tc > 0
+  const subtotal = (i: ItemForm) => (num(i.cantidad) || 0) * (num(i.precio_unitario) || 0)
+  const total = items.reduce((s, i) => s + subtotal(i), 0)
+  const errores = intentoEnvio ? validar(construir(), adjunto) : {}
 
   function actualizarItem(key: number, campo: keyof Omit<ItemForm, 'key'>, valor: string) {
     setItems((prev) => prev.map((i) => (i.key === key ? { ...i, [campo]: valor } : i)))
@@ -90,17 +111,9 @@ export function FormularioCotizacion({ pedidos, pedidoInicial }: { pedidos: Pedi
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setErrorEnvio(null)
+    setIntentoEnvio(true)
     const datos = construir()
-    const resultado = cotizacionSchema.safeParse(datos)
-    const nuevos: Errores = {}
-    if (!resultado.success) {
-      for (const issue of resultado.error.issues) {
-        const clave = issue.path.join('.')
-        if (!nuevos[clave]) nuevos[clave] = issue.message
-      }
-    }
-    if (adjunto && adjunto.size > MAX_ADJUNTO) nuevos.adjunto_url = 'El adjunto no puede superar 10 MB'
-    setErrores(nuevos)
+    const nuevos = validar(datos, adjunto)
 
     if (Object.keys(nuevos).length > 0) {
       const primero = Object.keys(nuevos)[0]
@@ -111,7 +124,15 @@ export function FormularioCotizacion({ pedidos, pedidoInicial }: { pedidos: Pedi
     setEnviando(true)
     try {
       const r = await enviarCotizacion(datos)
-      setConfirmacion({ ...r, pedido: pedidoId, total: total * (moneda === 'USD' ? tc : 1) })
+      setConfirmacion({
+        ...r,
+        pedido: pedidoId,
+        moneda,
+        total,
+        tipoCambio: moneda === 'USD' ? tc : undefined,
+        cierre: cierre?.toISOString(),
+      })
+      setIntentoEnvio(false)
     } catch (err) {
       setErrorEnvio(err instanceof Error ? err.message : 'No se pudo enviar la cotización')
     } finally {
@@ -140,7 +161,13 @@ export function FormularioCotizacion({ pedidos, pedidoInicial }: { pedidos: Pedi
       <div className="flex flex-col gap-8">
         <Seccion titulo="Pedido y proveedor">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Campo id={`${uid}-pedido`} label="Pedido" error={err('pedido_id')} className="sm:col-span-2">
+            <Campo
+              id={`${uid}-pedido`}
+              label="Pedido"
+              hint={cierre ? `Cierre: ${formatoFechaHora(cierre)} h (hora de Argentina)` : undefined}
+              error={err('pedido_id')}
+              className="sm:col-span-2"
+            >
               {(p) => (
                 <select {...p} data-campo="pedido_id" className={selectClass} value={pedidoId} onChange={(e) => setPedidoId(e.target.value)}>
                   {pedidos.map((o) => (
@@ -188,16 +215,26 @@ export function FormularioCotizacion({ pedidos, pedidoInicial }: { pedidos: Pedi
               </div>
             </fieldset>
             {moneda === 'USD' && (
-              <Campo id={`${uid}-tc`} label="Tipo de cambio usado (ARS por USD)" error={err('tipo_cambio_usado')}>
+              <Campo id={`${uid}-tc`} label="Tipo de cambio usado" hint="Obligatorio · ARS por cada USD" error={err('tipo_cambio_usado')}>
                 {(p) => (
-                  <Input {...p} data-campo="tipo_cambio_usado" type="number" min={0} step="0.01" inputMode="decimal" value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)} />
+                  <Input {...p} required aria-required="true" data-campo="tipo_cambio_usado" type="number" min={0} step="0.01" inputMode="decimal" value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)} />
                 )}
               </Campo>
             )}
           </div>
         </Seccion>
 
-        <Seccion titulo="Ítems" descripcion={`Precios unitarios en ${moneda}.`}>
+        <Seccion titulo="Ítems">
+          <p
+            aria-live="polite"
+            className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border bg-muted/60 px-3 py-2 text-sm"
+          >
+            <span className="rounded-sm bg-primary px-1.5 py-0.5 font-mono text-xs font-medium text-primary-foreground">{moneda}</span>
+            <span>
+              Todos los precios se expresan en {moneda === 'USD' ? 'dólares estadounidenses (USD)' : 'pesos argentinos (ARS)'},{' '}
+              {ivaIncluido ? 'con IVA incluido' : 'sin IVA'}.
+            </span>
+          </p>
           {err('items') && <p className="text-sm text-danger">{err('items')}</p>}
           <ol className="flex flex-col gap-4">
             {items.map((item, idx) => {
@@ -232,9 +269,15 @@ export function FormularioCotizacion({ pedidos, pedidoInicial }: { pedidos: Pedi
                     <Campo id={`${base}-unidad`} label="Unidad" error={e('unidad')} className="sm:col-span-2">
                       {(p) => <Input {...p} data-campo={`items.${idx}.unidad`} value={item.unidad} onChange={(ev) => actualizarItem(item.key, 'unidad', ev.target.value)} />}
                     </Campo>
-                    <Campo id={`${base}-precio`} label="Precio unitario" error={e('precio_unitario')} className="sm:col-span-2">
+                    <Campo id={`${base}-precio`} label={`Precio unitario (${moneda})`} error={e('precio_unitario')} className="sm:col-span-2">
                       {(p) => <Input {...p} data-campo={`items.${idx}.precio_unitario`} type="number" min={0} step="0.01" inputMode="decimal" value={item.precio_unitario} onChange={(ev) => actualizarItem(item.key, 'precio_unitario', ev.target.value)} />}
                     </Campo>
+                  </div>
+                  <div className="flex items-baseline justify-end gap-2 border-t border-border pt-3 text-sm">
+                    <span className="text-muted-foreground">Subtotal ítem {idx + 1}</span>
+                    <output htmlFor={`${base}-cant ${base}-precio`} className="font-mono font-medium tabular-nums">
+                      {formatoMonedaEn(subtotal(item), moneda)}
+                    </output>
                   </div>
                 </li>
               )
@@ -278,20 +321,35 @@ export function FormularioCotizacion({ pedidos, pedidoInicial }: { pedidos: Pedi
 
       <aside className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5 lg:sticky lg:top-6">
         <h2 className="font-mono text-xs font-medium uppercase tracking-wider text-muted-foreground">Resumen</h2>
-        {pedido && (
+        {pedido && cierre && (
           <div className="flex flex-col gap-0.5 text-sm">
             <span className="font-mono font-medium">{pedido.id}</span>
-            <span className="text-muted-foreground">Cierra el {formatoFecha(pedido.cierre)}</span>
+            <span className="text-muted-foreground">
+              Cierra el{' '}
+              <time dateTime={cierre.toISOString()} className="font-mono text-foreground">
+                {formatoFechaHora(cierre)} h
+              </time>
+            </span>
           </div>
         )}
-        <dl className="flex flex-col gap-1">
-          <dt className="text-sm text-muted-foreground">Total de la oferta</dt>
-          <dd className="font-mono text-xl font-medium tabular-nums">
-            {moneda === 'USD' ? `USD ${total.toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : formatoMoneda(total)}
-          </dd>
-          {moneda === 'USD' && Number.isFinite(tc) && tc > 0 && (
-            <dd className="font-mono text-sm text-muted-foreground tabular-nums">≈ {formatoMoneda(total * tc)}</dd>
-          )}
+        <dl className="flex flex-col gap-2 border-t border-border pt-4">
+          {items.map((i, idx) => (
+            <div key={i.key} className="flex items-baseline justify-between gap-2 text-sm">
+              <dt className="truncate text-muted-foreground">{i.descripcion.trim() || `Ítem ${idx + 1}`}</dt>
+              <dd className="font-mono tabular-nums">{formatoMonedaEn(subtotal(i), moneda)}</dd>
+            </div>
+          ))}
+          <div className="flex flex-col gap-1 border-t border-border pt-3">
+            <dt className="text-sm text-muted-foreground">Total general ({moneda})</dt>
+            <dd aria-live="polite" className="font-mono text-xl font-medium tabular-nums">
+              {formatoMonedaEn(total, moneda)}
+            </dd>
+            {moneda === 'USD' && (
+              <dd className="font-mono text-sm text-muted-foreground tabular-nums">
+                {tcValido ? `≈ ${formatoMoneda(total * tc)}` : 'Ingresá el tipo de cambio para ver el equivalente en ARS'}
+              </dd>
+            )}
+          </div>
         </dl>
         <p className="text-xs leading-relaxed text-muted-foreground">Origen: portal. La oferta no es visible hasta el cierre.</p>
         <div aria-live="assertive" className="text-sm">

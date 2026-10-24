@@ -15,6 +15,10 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-info-soft: var(--info-soft);
+  --color-cian: var(--cian);
+  --color-cian-soft: var(--cian-soft);
+  --color-cian-strong: var(--cian-strong);
+  --color-navy: var(--navy);
 
   --color-ring: var(--ring);
   --color-input: var(--input);
@@ -72,6 +76,10 @@
   --danger: oklch(0.5 0.19 27);
   --danger-soft: oklch(0.94 0.04 25);
   --info-soft: oklch(0.93 0.035 255);
+  --cian: oklch(0.78 0.12 205);
+  --cian-soft: oklch(0.95 0.04 205);
+  --cian-strong: oklch(0.5 0.1 215);
+  --navy: oklch(0.26 0.07 258);
 }
 
 @layer base {
@@ -97,4 +105,24 @@
 }
 .leaflet-container .leaflet-popup-content {
   margin: 12px 14px;
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.aparecer {
+  animation: aparecer 0.5s ease-out both;
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .aparecer {
+    animation: none;
+  }
 }

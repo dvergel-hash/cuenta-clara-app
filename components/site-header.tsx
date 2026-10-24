@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { Logo } from '@/components/logo'
 import { ETIQUETA_ROL, type Rol, type Usuario } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 
@@ -31,17 +32,8 @@ export function SiteHeader({ usuario }: { usuario: Usuario | null }) {
     <header className="sticky top-0 z-40 border-b border-border bg-card/95 shadow-sm backdrop-blur">
       <div className="h-1 bg-primary" aria-hidden="true" />
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 pb-2 pt-3 md:px-6">
-        <Link href="/licitaciones" className="flex items-center gap-3 rounded-sm">
-          <span
-            aria-hidden="true"
-            className="grid size-10 place-items-center rounded-lg bg-primary font-mono text-sm font-semibold text-primary-foreground shadow-sm"
-          >
-            CC
-          </span>
-          <span className="flex flex-col leading-tight">
-            <span className="text-lg font-semibold tracking-tight">Cuenta Clara</span>
-            <span className="hidden text-xs text-muted-foreground sm:block">Trazabilidad de compras públicas</span>
-          </span>
+        <Link href="/" aria-label="Cuenta Clara, inicio" className="rounded-sm">
+          <Logo />
         </Link>
         <div className="flex items-center gap-3 text-sm">
           {usuario ? (

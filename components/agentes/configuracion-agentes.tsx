@@ -1,12 +1,30 @@
 'use client'
 
-import { ArrowRight, Bot, Info } from 'lucide-react'
+import { ArrowRight, Bot, ChevronDown, Info, Sparkles } from 'lucide-react'
 import { useState } from 'react'
+import { selectClass } from '@/components/form-styles'
 import { Input } from '@/components/ui/input'
 import { MIN_PUNTOS_REFERENCIA } from '@/lib/calculos'
 import { cn } from '@/lib/utils'
 
-type Agente = { id: string; nombre: string; canal: string; fuentes: string; consulta: string; activo: boolean }
+const MODELOS = [
+  { id: 'claude-haiku-5-5', etiqueta: 'Claude Haiku 5.5', nota: 'Rápido y económico' },
+  { id: 'claude-sonnet-5-5', etiqueta: 'Claude Sonnet 5.5', nota: 'Equilibrado' },
+  { id: 'claude-opus-5-5', etiqueta: 'Claude Opus 5.5', nota: 'Máxima capacidad de análisis' },
+] as const
+
+type Agente = {
+  id: string
+  nombre: string
+  canal: string
+  fuentes: string
+  consulta: string
+  modelo: (typeof MODELOS)[number]['id']
+  prompt: string
+  activo: boolean
+  /** Agente de análisis (no busca precios): se muestra con otro ícono. */
+  analisis?: boolean
+}
 type Paso = { id: string; titulo: string; detalle: string; parametro?: { label: string; valor: string; unidad: string } }
 
 const AGENTES_INICIALES: Agente[] = [
@@ -16,6 +34,9 @@ const AGENTES_INICIALES: Agente[] = [
     canal: 'Web',
     fuentes: 'Comercios y marketplaces públicos',
     consulta: 'Precio de lista de {descripcion} en Argentina, con IVA',
+    modelo: 'claude-haiku-5-5',
+    prompt:
+      'Sos un agente que busca precios de referencia en la web para compras públicas argentinas. Buscá el precio de lista del producto pedido, con IVA incluido y en pesos. Descartá resultados sin fecha, sin precio visible o de otra región. Registrá siempre la URL y la fecha de la consulta. Si no encontrás al menos un precio confiable, respondé "sin resultado"; no estimes ni inventes valores.',
     activo: true,
   },
   {
@@ -24,6 +45,9 @@ const AGENTES_INICIALES: Agente[] = [
     canal: 'Correo',
     fuentes: 'Proveedores inscriptos en el rubro',
     consulta: 'Solicitud de cotización de {descripcion}, cantidad {cantidad}',
+    modelo: 'claude-haiku-5-5',
+    prompt:
+      'Sos un agente que redacta y registra pedidos de cotización por correo a proveedores inscriptos en el rubro. Escribí un mensaje breve y formal con la descripción, la cantidad y la fecha límite de respuesta. No negocies ni adelantes montos estimados. Registrá cada envío y cada respuesta recibida, o la ausencia de respuesta.',
     activo: true,
   },
   {
@@ -32,6 +56,9 @@ const AGENTES_INICIALES: Agente[] = [
     canal: 'Catálogo',
     fuentes: 'Catálogos de convenios marco',
     consulta: 'Buscar {descripcion} en catálogos vigentes',
+    modelo: 'claude-sonnet-5-5',
+    prompt:
+      'Sos un agente que consulta catálogos de convenios marco vigentes. Buscá el producto pedido, compará especificaciones equivalentes y devolvé precio, proveedor y vigencia del catálogo. Si hay más de una variante posible, listalas todas y no elijas una por tu cuenta.',
     activo: true,
   },
   {
@@ -40,7 +67,22 @@ const AGENTES_INICIALES: Agente[] = [
     canal: 'Mensajería',
     fuentes: 'Contactos comerciales verificados',
     consulta: 'Consulta de disponibilidad y precio de {descripcion}',
+    modelo: 'claude-haiku-5-5',
+    prompt:
+      'Sos un agente que consulta disponibilidad y precio por mensajería a contactos comerciales verificados. Mantené un tono formal y breve. Registrá la respuesta textual y descartá cualquier precio que no incluya condiciones de entrega e IVA.',
     activo: false,
+  },
+  {
+    id: 'sintesis',
+    nombre: 'Agente de síntesis y dictamen',
+    canal: 'Análisis interno',
+    fuentes: 'Ofertas publicadas, señales de alerta y referencia',
+    consulta: 'Sintetizar {licitacion} con sus señales y su desvío',
+    modelo: 'claude-opus-5-5',
+    prompt:
+      'Sos un analista de compras públicas. Con las ofertas ya publicadas, el precio de referencia, el desvío y las señales de alerta de una licitación, redactá una síntesis de un párrafo para quien debe decidir. Indicá qué dato respalda cada conclusión, aclará qué no se pudo verificar y no recomiendes aprobar o rechazar: esa decisión es de la persona responsable.',
+    activo: true,
+    analisis: true,
   },
 ]
 
@@ -122,8 +164,11 @@ export function ConfiguracionAgentes() {
 
       <section aria-labelledby="titulo-agentes" className="flex flex-col gap-4">
         <h2 id="titulo-agentes" className="text-lg font-semibold tracking-tight">
-          Agentes de búsqueda
+          Agentes de búsqueda y análisis
         </h2>
+        <p className="-mt-2 text-sm text-muted-foreground">
+          Los modelos y prompts son una vista de configuración de demostración: todavía no se ejecutan.
+        </p>
         <ul className="grid gap-4 md:grid-cols-2">
           {agentes.map((a) => (
             <li
@@ -133,7 +178,11 @@ export function ConfiguracionAgentes() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-2.5">
                   <span className="grid size-8 shrink-0 place-items-center rounded-md bg-info-soft text-primary">
-                    <Bot className="size-4" aria-hidden="true" />
+                    {a.analisis ? (
+                      <Sparkles className="size-4" aria-hidden="true" />
+                    ) : (
+                      <Bot className="size-4" aria-hidden="true" />
+                    )}
                   </span>
                   <div className="flex flex-col leading-tight">
                     <h3 className="text-sm font-semibold">{a.nombre}</h3>
@@ -160,6 +209,47 @@ export function ConfiguracionAgentes() {
                   className="font-mono text-xs"
                 />
               </label>
+              <details className="group rounded-md border border-border bg-muted/30">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium [&::-webkit-details-marker]:hidden">
+                  <span>
+                    Modelo y prompt
+                    <span className="ml-2 font-normal text-muted-foreground">
+                      {MODELOS.find((m) => m.id === a.modelo)?.etiqueta}
+                    </span>
+                  </span>
+                  <ChevronDown
+                    className="size-4 text-muted-foreground transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </summary>
+                <div className="flex flex-col gap-3 border-t border-border p-3">
+                  <label className="flex flex-col gap-1 text-xs font-medium">
+                    Modelo
+                    <select
+                      value={a.modelo}
+                      disabled={!a.activo}
+                      onChange={(e) => cambiar(a.id, { modelo: e.target.value as Agente['modelo'] })}
+                      className={selectClass}
+                    >
+                      {MODELOS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.etiqueta} · {m.nota}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-medium">
+                    Prompt del agente
+                    <textarea
+                      value={a.prompt}
+                      disabled={!a.activo}
+                      rows={6}
+                      onChange={(e) => cambiar(a.id, { prompt: e.target.value })}
+                      className="w-full rounded-md border border-input bg-card px-2.5 py-2 text-xs font-normal leading-relaxed outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:opacity-50"
+                    />
+                  </label>
+                </div>
+              </details>
             </li>
           ))}
         </ul>

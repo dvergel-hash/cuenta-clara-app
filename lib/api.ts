@@ -79,6 +79,8 @@ async function fuentePrincipal(): Promise<Fuente> {
 }
 
 let avisado = false
+/** true si alguna lectura cayó a los datos sintéticos (solo ocurre en desarrollo, sin base). */
+export const datosDemo = () => avisado
 function conRespaldo<K extends keyof Fuente>(clave: K) {
   return (async (...args: Parameters<Fuente[K]>) => {
     const principal = await fuentePrincipal()

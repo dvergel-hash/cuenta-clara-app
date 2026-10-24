@@ -71,15 +71,15 @@ export default async function LicitacionesPage({ searchParams }: { searchParams:
         <Suspense>
           <FiltrosLicitaciones estados={ESTADOS} partidas={partidas} hayFiltros={conFiltros} />
         </Suspense>
-        <p id="titulo-listado" className="text-sm text-muted-foreground" aria-live="polite">
+        <p id="titulo-listado" className="text-sm font-medium text-muted-foreground" aria-live="polite">
           {filtradas.length} {filtradas.length === 1 ? 'pedido' : 'pedidos'}
           {conFiltros && ` de ${todas.length}`}
         </p>
 
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/60 hover:bg-muted/60">
+              <TableRow className="bg-muted/50 hover:bg-muted/50">
                 {COLUMNAS.map((c) => {
                   const activa = filtros.orden === c.clave
                   const siguiente = activa && filtros.dir === 'asc' ? 'desc' : 'asc'
@@ -130,12 +130,12 @@ export default async function LicitacionesPage({ searchParams }: { searchParams:
                   <TableCell className="pl-4">
                     <Link
                       href={`/licitaciones/${l.id}`}
-                      className="font-mono text-sm font-medium text-primary underline-offset-4 hover:underline"
+                      className="font-mono text-sm font-semibold text-primary underline-offset-4 hover:underline"
                     >
                       {l.id}
                     </Link>
                   </TableCell>
-                  <TableCell className="max-w-xs whitespace-normal">{l.descripcion}</TableCell>
+                  <TableCell className="max-w-sm whitespace-normal font-medium leading-snug">{l.descripcion}</TableCell>
                   <TableCell className="text-right font-mono tabular-nums">{formatoMoneda(l.monto_estimado)}</TableCell>
                   <TableCell className="whitespace-normal">
                     <span className="font-mono text-xs text-muted-foreground">{l.partida.codigo}</span>

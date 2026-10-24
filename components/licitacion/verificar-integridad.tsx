@@ -3,7 +3,7 @@
 import { Check, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { getRegistro, modoDemo } from '@/lib/api'
+import { getRegistro } from '@/lib/api'
 import { verificarCadena, type ResultadoIntegridad } from '@/lib/calculos'
 import { formatoFecha, hashCorto } from '@/lib/format'
 import type { Decision } from '@/lib/types'
@@ -48,20 +48,18 @@ export function VerificarIntegridad({ pedidoId }: { pedidoId: string }) {
           <ShieldCheck aria-hidden="true" />
           {verificando ? 'Verificando…' : 'Verificar integridad'}
         </Button>
-        {modoDemo && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-4 accent-primary"
-              checked={simularAlteracion}
-              onChange={(e) => {
-                setSimularAlteracion(e.target.checked)
-                setEstado(null)
-              }}
-            />
-            Usar variante alterada (demo)
-          </label>
-        )}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={simularAlteracion}
+            onChange={(e) => {
+              setSimularAlteracion(e.target.checked)
+              setEstado(null)
+            }}
+          />
+          Simular una alteración (solo en este navegador)
+        </label>
       </div>
 
       <div aria-live="polite" className="flex flex-col gap-3">

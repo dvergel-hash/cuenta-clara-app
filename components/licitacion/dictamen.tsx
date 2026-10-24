@@ -1,7 +1,9 @@
 import { FileText } from 'lucide-react'
 import { EstadoBadge, etiquetaEstado } from '@/components/indicadores'
 import type { Dictamen } from '@/lib/dictamen'
-import { formatoFecha, hashCorto } from '@/lib/format'
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { formatoFecha, formatoMoneda, formatoPorcentaje, hashCorto } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 export function DictamenDocumento({ dictamen }: { dictamen: Dictamen }) {
   const { decision } = dictamen
@@ -41,6 +43,62 @@ export function DictamenDocumento({ dictamen }: { dictamen: Dictamen }) {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section aria-labelledby="dictamen-precios" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 id="dictamen-precios" className="font-mono text-xs font-semibold uppercase tracking-wider text-primary">
+            Precios obtenidos
+          </h3>
+          <p className="text-xs text-muted-foreground">Desvío respecto de la referencia</p>
+        </div>
+        <div className="overflow-x-auto rounded-md border border-border">
+          <Table>
+            <caption className="sr-only">Ofertas y precios de referencia considerados en el dictamen</caption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fuente</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead className="text-right">Monto</TableHead>
+                <TableHead className="text-right">Desvío</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {dictamen.precios.map((p) => (
+                <TableRow key={p.id} className={cn(p.menor && 'bg-info-soft hover:bg-info-soft')}>
+                  <TableCell className="whitespace-normal">
+                    <span className="font-medium">{p.fuente}</span>
+                    {p.menor && <span className="block text-xs text-primary">Menor monto</span>}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{p.tipo}</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">{formatoMoneda(p.monto)}</TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-right font-mono tabular-nums',
+                      p.desvio === null && 'text-muted-foreground',
+                      p.desvio !== null && p.desvio > 0.25 && 'font-semibold text-warn',
+                      p.desvio !== null && p.desvio <= 0 && 'text-ok',
+                    )}
+                  >
+                    {p.desvio === null ? '—' : formatoPorcentaje(p.desvio)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={2} className="whitespace-normal">
+                  Precio de referencia
+                  <span className="block text-xs font-normal text-muted-foreground">{decision.referencia.metodo}</span>
+                </TableCell>
+                <TableCell className="text-right font-mono tabular-nums">
+                  {formatoMoneda(decision.referencia.valor)}
+                </TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">—</TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </div>
       </section>
 
       <section

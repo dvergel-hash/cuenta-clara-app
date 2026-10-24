@@ -7,7 +7,22 @@ export interface Dictamen {
   fecha: string
   visto: string
   considerandos: string[]
+  precios: PrecioObtenido[]
   decision: Decision
+}
+
+export interface PrecioObtenido {
+  id: string
+  fuente: string
+  tipo: 'Oferta · portal' | 'Oferta · agente' | 'Referencia'
+  monto: number
+  desvio: number | null
+  menor: boolean
+}
+
+const dominio = (destino: string | null) => {
+  if (!destino?.startsWith('http')) return destino
+  return new URL(destino).hostname.replace(/^www\./, '')
 }
 
 const listar = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`)
@@ -55,8 +70,41 @@ export function construirDictamen(detalle: LicitacionDetalle): Dictamen | null {
       : `Que la partida ${partida.codigo} (${partida.nombre}) registraba un saldo de ${formatoMoneda(decision.saldo_partida_antes)}, que pasa a ${formatoMoneda(decision.saldo_partida_despues)} con esta adjudicación.`,
   )
 
+  const valorReferencia = decision.referencia.valor
+  const desvioRef = (precio: number) => (valorReferencia ? precio / valorReferencia - 1 : null)
+  const urlsFuentes = new Set(decision.referencia.fuentes.map((f) => f.url))
+  const precios: PrecioObtenido[] = [
+    ...cotizaciones.map((c) => ({
+      id: c.id,
+      fuente: c.proveedor_nombre,
+      tipo: c.origen === 'portal' ? ('Oferta · portal' as const) : ('Oferta · agente' as const),
+      monto: c.total_ars,
+      desvio: c.desvio,
+      menor: c.id === menor?.id,
+    })),
+    ...decision.referencia.fuentes.map((f) => ({
+      id: f.url,
+      fuente: dominio(f.url) ?? f.url,
+      tipo: 'Referencia' as const,
+      monto: f.precio,
+      desvio: desvioRef(f.precio),
+      menor: false,
+    })),
+    ...busquedas
+      .filter((b) => b.resultado === 'referencia' && b.precio !== undefined && !urlsFuentes.has(b.destino ?? ''))
+      .map((b) => ({
+        id: b.id,
+        fuente: dominio(b.destino) ?? b.agente,
+        tipo: 'Referencia' as const,
+        monto: b.precio as number,
+        desvio: desvioRef(b.precio as number),
+        menor: false,
+      })),
+  ]
+
   return {
     numero: decision.id.replace('DEC', 'DICT'),
+    precios,
     fecha: decision.fecha,
     visto: `El pedido ${licitacion.id}, "${licitacion.descripcion}", imputado a la partida ${partida.codigo}, con un monto estimado de ${formatoMoneda(licitacion.monto_estimado)}.`,
     considerandos,

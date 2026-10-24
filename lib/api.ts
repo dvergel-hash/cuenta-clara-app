@@ -2,7 +2,7 @@ import { MIN_PUNTOS_REFERENCIA, detectarSenales, proyeccionLineal, totalCotizaci
 import { ErrorApi, ErrorConexion } from './errores'
 import * as mock from './mock'
 import { esSellada, ocultarBusqueda, type Fuente } from './publicacion'
-import type { ObservacionInput } from './schemas'
+import type { LicitacionInput, ObservacionInput } from './schemas'
 import { canonico, sha256 } from './sha256'
 import type {
   ConfirmacionCotizacion,
@@ -11,6 +11,7 @@ import type {
   Cotizacion,
   Decision,
   EstadoLicitacion,
+  Licitacion,
   LicitacionDetalle,
   LicitacionResumen,
   Partida,
@@ -265,4 +266,12 @@ export async function enviarCotizacion(cotizacion: Cotizacion): Promise<Confirma
     const hash = sha256(canonico(datos))
     return { id: `COT-${hash.slice(0, 8).toUpperCase()}`, hash, recibida: new Date().toISOString() }
   }
+}
+
+export async function crearLicitacion(datos: LicitacionInput): Promise<Licitacion> {
+  return pedir<Licitacion>('/licitaciones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(datos),
+  })
 }

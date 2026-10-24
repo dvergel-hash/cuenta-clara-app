@@ -65,3 +65,14 @@ export const cotizacionSchema = z
   })
 
 export type CotizacionInput = z.infer<typeof cotizacionSchema>
+
+export const licitacionSchema = z.object({
+  descripcion: z.string().trim().min(10, 'Describí el pedido: al menos 10 caracteres').max(300, 'Máximo 300 caracteres'),
+  partida_id: z.string().trim().min(1, 'Elegí la partida presupuestaria'),
+  organismo: opcional(z.string().trim().max(120, 'Máximo 120 caracteres')),
+  rubro: opcional(z.string().trim().max(80, 'Máximo 80 caracteres')),
+  monto_estimado: numero().positive('Debe ser mayor a 0'),
+  fecha_cierre: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí una fecha de cierre'),
+})
+
+export type LicitacionInput = z.infer<typeof licitacionSchema>

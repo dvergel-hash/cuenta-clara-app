@@ -4,7 +4,8 @@ import { Suspense } from 'react'
 import { EstadoBadge } from '@/components/indicadores'
 import { FiltrosLicitaciones } from '@/components/licitaciones/filtros'
 import { PageHeader } from '@/components/page-header'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { buttonVariants } from '@/components/ui/button'
+import { Table,TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ESTADOS, getLicitaciones, getPartidas } from '@/lib/api'
 import { formatoFecha, formatoMoneda } from '@/lib/format'
 
@@ -24,7 +25,11 @@ export default async function LicitacionesPage({
         eyebrow="Compras estatales"
         title="Licitaciones"
         description="Pedidos de cotización publicados por el organismo. Cada decisión queda sellada en un registro verificable."
-      />
+      >
+        <Link href="/licitaciones/nueva" className={buttonVariants()}>
+          Nueva licitación
+        </Link>
+      </PageHeader>
 
       <section aria-labelledby="titulo-listado" className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

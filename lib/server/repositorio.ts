@@ -3,7 +3,7 @@ import { ErrorApi } from '../errores'
 import { fechaCierre, formatoMoneda } from '../format'
 import * as mock from '../mock'
 import { ocultarBusqueda, type Fuente, type RespuestaCotizaciones } from '../publicacion'
-import type { CotizacionInput, ObservacionInput } from '../schemas'
+import type { CotizacionInput, LicitacionInput, ObservacionInput } from '../schemas'
 import { canonico, sha256 } from '../sha256'
 import type {
   BusquedaAgente,
@@ -206,6 +206,34 @@ export const fuenteDb: Fuente = {
 }
 
 // ---------- Escrituras ----------
+
+/** Crea un pedido abierto. El id sigue el formato PED-<año>-<n°> con el siguiente número libre del año. */
+export function registrarLicitacion(entrada: LicitacionInput): Promise<Licitacion> {
+  return consultar(async () => {
+    const sql = db()
+    const [partida] = await sql`SELECT id FROM partidas WHERE id = ${entrada.partida_id}`
+    if (!partida) throw new ErrorApi(422, 'La partida elegida no existe')
+    if (Date.now() > fechaCierre(entrada.fecha_cierre).getTime()) {
+      throw new ErrorApi(422, 'La fecha de cierre debe ser futura')
+    }
+
+    const anio = new Date().getFullYear()
+    for (let intento = 0; intento < 5; intento++) {
+      const [{ siguiente }] = await sql`
+        SELECT coalesce(max(substring(id from '[0-9]+$')::int), 0) + 1 + ${intento} AS siguiente
+        FROM licitaciones WHERE id ~ ${`^PED-${anio}-[0-9]+$`}`
+      const id = `PED-${anio}-${String(siguiente).padStart(4, '0')}`
+      const [fila] = await sql`
+        INSERT INTO licitaciones (id, descripcion, partida_id, estado, fecha_cierre, monto_estimado, organismo, rubro)
+        VALUES (${id}, ${entrada.descripcion}, ${entrada.partida_id}, 'abierto', ${entrada.fecha_cierre},
+                ${entrada.monto_estimado}, ${entrada.organismo ?? null}, ${entrada.rubro ?? null})
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id, descripcion, partida_id, estado, fecha_cierre, monto_estimado, proveedor_adjudicado_id, organismo, rubro`
+      if (fila) return sinNulos<Licitacion>(fila)
+    }
+    throw new Error('No se pudo generar un número de pedido único')
+  })
+}
 
 export function registrarCotizacion(entrada: CotizacionInput): Promise<ConfirmacionCotizacion> {
   return consultar(async () => {

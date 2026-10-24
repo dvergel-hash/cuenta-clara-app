@@ -10,6 +10,7 @@ const secciones = [
   { href: '/presupuesto', label: 'Presupuesto' },
   { href: '/proveedores', label: 'Proveedores' },
   { href: '/portal', label: 'Portal de proveedores' },
+  { href: '/agentes', label: 'Agentes y flujos' },
   { href: '/ciudadano', label: 'Ciudadanía' },
 ]
 

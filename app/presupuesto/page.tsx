@@ -73,7 +73,7 @@ export default async function PresupuestoPage() {
                         role="img"
                         aria-label={`${formatoPorcentajeSinSigno(avance)} ejecutado`}
                       >
-                        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(avance, 1) * 100}%` }} />
+                        <div className="barra h-full rounded-full bg-gradient-to-r from-primary to-cian" style={{ width: `${Math.min(avance, 1) * 100}%` }} />
                       </div>
                       <span className="w-12 text-right font-mono text-xs tabular-nums text-muted-foreground">
                         {formatoPorcentajeSinSigno(avance)}

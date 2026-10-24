@@ -2,15 +2,17 @@ import { MIN_PUNTOS_REFERENCIA, detectarSenales, proyeccionLineal, totalCotizaci
 import { ErrorApi, ErrorConexion } from './errores'
 import * as mock from './mock'
 import { esSellada, ocultarBusqueda, type Fuente } from './publicacion'
-import type { ObservacionInput } from './schemas'
+import type { LicitacionInput, ObservacionInput } from './schemas'
 import { canonico, sha256 } from './sha256'
 import type {
   ConfirmacionCotizacion,
+  DesglosePartida,
   ConfirmacionObservacion,
   SeguimientoObservacion,
   Cotizacion,
   Decision,
   EstadoLicitacion,
+  Licitacion,
   LicitacionDetalle,
   LicitacionResumen,
   Partida,
@@ -78,6 +80,8 @@ async function fuentePrincipal(): Promise<Fuente> {
 }
 
 let avisado = false
+/** true si alguna lectura cayó a los datos sintéticos (solo ocurre en desarrollo, sin base). */
+export const datosDemo = () => avisado
 function conRespaldo<K extends keyof Fuente>(clave: K) {
   return (async (...args: Parameters<Fuente[K]>) => {
     const principal = await fuentePrincipal()
@@ -265,4 +269,47 @@ export async function enviarCotizacion(cotizacion: Cotizacion): Promise<Confirma
     const hash = sha256(canonico(datos))
     return { id: `COT-${hash.slice(0, 8).toUpperCase()}`, hash, recibida: new Date().toISOString() }
   }
+}
+
+export async function crearLicitacion(datos: LicitacionInput): Promise<Licitacion> {
+  return pedir<Licitacion>('/licitaciones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(datos),
+  })
+}
+
+export async function getDesglosePartidas(): Promise<DesglosePartida[]> {
+  const [partidas, lics] = await Promise.all([fuente.partidas(), fuente.licitaciones()])
+  const detalles = await Promise.all(lics.filter((l) => l.estado !== 'abierto').map((l) => getLicitacion(l.id)))
+  const cerradas = new Map(detalles.filter((d) => d !== null).map((d) => [d!.licitacion.id, d!]))
+
+  return partidas.map((p) => {
+    const propias = lics.filter((l) => l.partida_id === p.id)
+    const abiertas = propias.filter((l) => l.estado === 'abierto')
+    let ofertado = 0
+    let adjudicado = 0
+    let nAdjudicadas = 0
+    let nCerradas = 0
+    for (const l of propias.filter((x) => x.estado !== 'abierto')) {
+      const ofertas = cerradas.get(l.id)?.cotizaciones ?? []
+      if (!ofertas.length) continue
+      nCerradas++
+      ofertado += ofertas[0].total_ars
+      if (l.estado === 'aprobado') {
+        const ganadora = ofertas.find((c) => c.proveedor_id === l.proveedor_adjudicado_id) ?? ofertas[0]
+        adjudicado += ganadora.total_ars
+        nAdjudicadas++
+      }
+    }
+    return {
+      ...p,
+      abiertas: abiertas.length,
+      estimado_abierto: abiertas.reduce((s, l) => s + l.monto_estimado, 0),
+      cerradas: nCerradas,
+      ofertado_cerrado: ofertado,
+      adjudicadas: nAdjudicadas,
+      adjudicado,
+    }
+  })
 }

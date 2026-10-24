@@ -2,10 +2,12 @@ import type { Metadata } from 'next'
 import { PageHeader } from '@/components/page-header'
 import { FormularioCotizacion } from '@/components/portal/formulario-cotizacion'
 import { getLicitacionesAbiertas } from '@/lib/api'
+import { exigirRol } from '@/lib/sesion'
 
 export const metadata: Metadata = { title: 'Portal de proveedores' }
 
 export default async function PortalPage({ searchParams }: { searchParams: Promise<{ pedido?: string }> }) {
+  await exigirRol(['proveedor', 'admin'], '/portal')
   const [{ pedido }, abiertas] = await Promise.all([searchParams, getLicitacionesAbiertas()])
   const pedidoInicial = abiertas.some((l) => l.id === pedido) ? pedido : abiertas[0]?.id
 

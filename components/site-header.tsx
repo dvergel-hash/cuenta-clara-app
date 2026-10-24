@@ -1,20 +1,29 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { ETIQUETA_ROL, type Rol, type Usuario } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 
-const secciones = [
+const secciones: { href: string; label: string; roles?: Rol[] }[] = [
   { href: '/licitaciones', label: 'Licitaciones' },
   { href: '/mapa', label: 'Mapa' },
   { href: '/presupuesto', label: 'Presupuesto' },
   { href: '/proveedores', label: 'Proveedores' },
-  { href: '/portal', label: 'Portal de proveedores' },
+  { href: '/portal', label: 'Portal de proveedores', roles: ['proveedor', 'admin'] },
   { href: '/ciudadano', label: 'Ciudadanía' },
+  { href: '/agentes', label: 'Agentes y flujos', roles: ['admin'] },
 ]
 
-export function SiteHeader() {
+export function SiteHeader({ usuario }: { usuario: Usuario | null }) {
   const pathname = usePathname()
+  const router = useRouter()
+
+  async function salir() {
+    await fetch('/api/sesion', { method: 'DELETE' })
+    router.push('/licitaciones')
+    router.refresh()
+  }
 
   return (
     <header className="border-b border-border bg-card">
@@ -34,7 +43,9 @@ export function SiteHeader() {
         </Link>
         <nav aria-label="Secciones principales" className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
           <ul className="flex gap-1">
-            {secciones.map((s) => {
+            {secciones
+              .filter((s) => !s.roles || (usuario && s.roles.includes(usuario.rol)))
+              .map((s) => {
               const activo = pathname === s.href || pathname.startsWith(`${s.href}/`)
               return (
                 <li key={s.href}>
@@ -55,6 +66,30 @@ export function SiteHeader() {
             })}
           </ul>
         </nav>
+        <div className="flex items-center gap-3 text-sm">
+          {usuario ? (
+            <>
+              <span className="flex flex-col leading-tight">
+                <span className="font-medium">{usuario.nombre}</span>
+                <span className="text-xs text-muted-foreground">{ETIQUETA_ROL[usuario.rol]}</span>
+              </span>
+              <button
+                type="button"
+                onClick={salir}
+                className="h-8 rounded-md border border-border px-3 font-medium transition-colors hover:bg-muted"
+              >
+                Salir
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/login"
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Ingresar
+            </Link>
+          )}
+        </div>
       </div>
     </header>
   )

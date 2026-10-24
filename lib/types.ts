@@ -188,3 +188,16 @@ export interface ConfirmacionCotizacion {
   hash: string
   recibida: string
 }
+
+/** Importes por partida, separando estimaciones, ofertas y montos adjudicados. */
+export interface DesglosePartida extends Partida {
+  /** Pedidos abiertos: suma de montos estimados. Las ofertas siguen selladas. */
+  abiertas: number
+  estimado_abierto: number
+  /** Pedidos ya cerrados: suma de la menor oferta recibida en cada uno. */
+  cerradas: number
+  ofertado_cerrado: number
+  /** Pedidos aprobados: suma del total de la oferta adjudicada. */
+  adjudicadas: number
+  adjudicado: number
+}

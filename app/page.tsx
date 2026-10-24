@@ -49,7 +49,7 @@ function Cifra({ valor, etiqueta, i }: { valor: string; etiqueta: string; i: num
   return (
     <div className="aparecer flex min-w-0 flex-col gap-1" style={{ '--i': i + 3 } as React.CSSProperties}>
       <dd className="font-mono text-xl font-semibold tabular-nums text-white sm:text-2xl xl:text-3xl">{valor}</dd>
-      <dt className="text-sm text-white/70">{etiqueta}</dt>
+      <dt className="text-sm text-white/90">{etiqueta}</dt>
     </div>
   )
 }
@@ -92,7 +92,7 @@ export default async function InicioPage() {
             Más que saber en qué se gasta: <span className="text-cian">entenderlo</span> y poder controlarlo.
           </h1>
           <p
-            className="aparecer max-w-2xl text-pretty text-lg leading-relaxed text-white/80"
+            className="aparecer max-w-2xl text-pretty text-lg leading-relaxed text-white/90"
             style={{ '--i': 2 } as React.CSSProperties}
           >
             Cuenta Clara conecta licitaciones, presupuesto y proveedores en un solo lugar, para detectar desvíos y

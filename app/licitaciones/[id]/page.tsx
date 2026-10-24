@@ -13,8 +13,10 @@ import { DecisionPanel } from '@/components/licitacion/decision-panel'
 import { ReferenciaPanel } from '@/components/licitacion/referencia-panel'
 import { SenalesAlerta } from '@/components/licitacion/senales-alerta'
 import { VerificarIntegridad } from '@/components/licitacion/verificar-integridad'
+import { CerrarLicitacion } from '@/components/licitacion/cerrar-licitacion'
 import { getLicitacion } from '@/lib/api'
-import { formatoFecha, formatoMoneda } from '@/lib/format'
+import { sesionActual } from '@/lib/sesion'
+import { fechaCierre, formatoFecha, formatoMoneda } from '@/lib/format'
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
@@ -31,7 +33,7 @@ export default async function LicitacionPage({
   searchParams: Promise<{ tab?: string }>
 }) {
   const [{ id }, { tab }] = await Promise.all([params, searchParams])
-  const detalle = await getLicitacion(id)
+  const [detalle, usuario] = await Promise.all([getLicitacion(id), sesionActual()])
   if (!detalle) notFound()
 
   const { licitacion, partida, decision, cotizaciones, cantidad_ofertas } = detalle
@@ -84,6 +86,13 @@ export default async function LicitacionPage({
             </dd>
           </div>
         </dl>
+        {usuario?.rol === 'admin' && licitacion.estado === 'abierto' && (
+          <CerrarLicitacion
+            id={licitacion.id}
+            puedeCerrar={Date.now() >= fechaCierre(licitacion.fecha_cierre).getTime()}
+            disponibleDesde={formatoFecha(licitacion.fecha_cierre)}
+          />
+        )}
       </header>
 
       <PestanasLicitacion

@@ -3,7 +3,11 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { EstadoBadge } from '@/components/indicadores'
+import { BusquedasAgentes } from '@/components/licitacion/busquedas-agentes'
 import { CotizacionesTabla } from '@/components/licitacion/cotizaciones-tabla'
+import { DictamenDocumento } from '@/components/licitacion/dictamen'
+import { type Pestana, PestanasLicitacion } from '@/components/licitacion/pestanas'
+import { construirDictamen } from '@/lib/dictamen'
 import { DecisionPanel } from '@/components/licitacion/decision-panel'
 import { ReferenciaPanel } from '@/components/licitacion/referencia-panel'
 import { VerificarIntegridad } from '@/components/licitacion/verificar-integridad'
@@ -15,12 +19,22 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: `Pedido ${id}` }
 }
 
-export default async function LicitacionPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
+const PESTANAS: Pestana[] = ['resumen', 'dictamen', 'busquedas']
+
+export default async function LicitacionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string }>
+}) {
+  const [{ id }, { tab }] = await Promise.all([params, searchParams])
   const detalle = await getLicitacion(id)
   if (!detalle) notFound()
 
   const { licitacion, partida, decision, cotizaciones, cantidad_ofertas } = detalle
+  const dictamen = construirDictamen(detalle)
+  const inicial = PESTANAS.find((p) => p === tab) ?? 'resumen'
 
   return (
     <div className="flex flex-col gap-8">
@@ -56,6 +70,25 @@ export default async function LicitacionPage({ params }: { params: Promise<{ id:
         </dl>
       </header>
 
+      <PestanasLicitacion
+        inicial={inicial}
+        cantidadBusquedas={detalle.busquedas.length}
+        dictamen={
+          dictamen ? (
+            <DictamenDocumento dictamen={dictamen} />
+          ) : (
+            <div className="flex items-start gap-4 rounded-lg border border-dashed border-primary/30 bg-info-soft p-5">
+              <Lock className="mt-1 size-5 shrink-0 text-primary" aria-hidden="true" />
+              <p className="text-pretty leading-relaxed text-muted-foreground">
+                El dictamen de evaluación se emite después de la apertura de sobres del{' '}
+                {formatoFecha(licitacion.fecha_cierre)}.
+              </p>
+            </div>
+          )
+        }
+        busquedas={<BusquedasAgentes busquedas={detalle.busquedas} sellado={cotizaciones === null} />}
+        resumen={
+          <>
       <section aria-labelledby="titulo-cotizaciones" className="flex flex-col gap-4">
         <h2 id="titulo-cotizaciones" className="text-lg font-semibold">
           Cotizaciones recibidas
@@ -96,6 +129,9 @@ export default async function LicitacionPage({ params }: { params: Promise<{ id:
       )}
 
       <VerificarIntegridad pedidoId={licitacion.id} />
+          </>
+        }
+      />
     </div>
   )
 }

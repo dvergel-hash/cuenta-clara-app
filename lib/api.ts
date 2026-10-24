@@ -2,6 +2,7 @@ import { MIN_PUNTOS_REFERENCIA, proyeccionLineal, totalCotizacion } from './calc
 import * as mock from './mock'
 import { canonico, sha256 } from './sha256'
 import type {
+  BusquedaAgente,
   ConfirmacionCotizacion,
   Cotizacion,
   CotizacionRegistrada,
@@ -37,6 +38,10 @@ const fuente = {
       : obtener<CotizacionRegistrada[]>(
           pedidoId ? `/cotizaciones?pedido_id=${encodeURIComponent(pedidoId)}` : '/cotizaciones',
         ),
+  busquedas: (pedidoId: string) =>
+    modoDemo
+      ? Promise.resolve(mock.busquedas.filter((b) => b.pedido_id === pedidoId))
+      : obtener<BusquedaAgente[]>(`/busquedas?pedido_id=${encodeURIComponent(pedidoId)}`),
   decisiones: (variante: 'original' | 'alterado' = 'original') =>
     modoDemo
       ? Promise.resolve(variante === 'alterado' ? mock.registroAlterado : mock.registro)
@@ -63,17 +68,21 @@ export async function getLicitacionesAbiertas(): Promise<LicitacionResumen[]> {
 }
 
 export async function getLicitacion(id: string): Promise<LicitacionDetalle | null> {
-  const [lics, parts, provs, cots, decs] = await Promise.all([
+  const [lics, parts, provs, cots, decs, buss] = await Promise.all([
     fuente.licitaciones(),
     fuente.partidas(),
     fuente.proveedores(),
     fuente.cotizaciones(id),
     fuente.decisiones(),
+    fuente.busquedas(id),
   ])
   const licitacion = lics.find((l) => l.id === id)
   if (!licitacion) return null
   const partida = parts.find((p) => p.id === licitacion.partida_id)!
   const propias = cots.filter((c) => c.pedido_id === id)
+  const busquedas = buss
+    .filter((b) => b.pedido_id === id)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
 
   // Ofertas selladas: los montos nunca salen de esta capa mientras el pedido esté abierto.
   if (licitacion.estado === 'abierto') {
@@ -85,6 +94,8 @@ export async function getLicitacion(id: string): Promise<LicitacionDetalle | nul
       cotizaciones: null,
       puntos_referencia: 0,
       referencia_concluyente: false,
+      // Las búsquedas se publican sin precio ni destino para no revelar oferentes ni montos.
+      busquedas: busquedas.map(({ precio: _p, cotizacion_id: _c, nota: _n, ...b }) => ({ ...b, destino: null })),
     }
   }
 
@@ -111,6 +122,7 @@ export async function getLicitacion(id: string): Promise<LicitacionDetalle | nul
       .sort((a, b) => a.total_ars - b.total_ars),
     puntos_referencia: puntos,
     referencia_concluyente: concluyente,
+    busquedas,
   }
 }
 

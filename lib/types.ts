@@ -97,6 +97,25 @@ export interface CotizacionPublica extends CotizacionRegistrada {
   desvio: number | null
 }
 
+export type CanalBusqueda = 'web' | 'correo' | 'catalogo' | 'mensajeria'
+export type ResultadoBusqueda = 'cotizacion' | 'referencia' | 'descartada' | 'sin_respuesta'
+
+/** Cada consulta que un agente hizo para obtener cotizaciones o precios de referencia. */
+export interface BusquedaAgente {
+  id: string
+  pedido_id: string
+  agente: string
+  fecha: string
+  canal: CanalBusqueda
+  consulta: string
+  /** URL consultada o contacto del proveedor. Se oculta mientras el pedido esté abierto. */
+  destino: string | null
+  resultado: ResultadoBusqueda
+  precio?: number
+  cotizacion_id?: string
+  nota?: string
+}
+
 export interface LicitacionDetalle {
   licitacion: Licitacion
   partida: Partida
@@ -106,6 +125,7 @@ export interface LicitacionDetalle {
   cotizaciones: CotizacionPublica[] | null
   puntos_referencia: number
   referencia_concluyente: boolean
+  busquedas: BusquedaAgente[]
 }
 
 export interface ProyeccionPartida extends Partida {

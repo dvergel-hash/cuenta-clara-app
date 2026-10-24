@@ -48,13 +48,13 @@ export default async function LicitacionPage({
         Volver a licitaciones
       </Link>
 
-      <header className="flex flex-col gap-4 border-b border-border pb-6">
+      <header className="flex flex-col gap-5 rounded-xl border border-border bg-card p-6 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <p className="font-mono text-sm font-medium text-muted-foreground">{licitacion.id}</p>
           <EstadoBadge estado={licitacion.estado} />
         </div>
         <h1 className="text-balance text-2xl font-semibold tracking-tight md:text-3xl">{licitacion.descripcion}</h1>
-        <dl className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
+        <dl className="grid gap-x-8 gap-y-4 border-t border-border pt-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex flex-col gap-0.5">
             <dt className="text-muted-foreground">Partida</dt>
             <dd>
@@ -63,7 +63,7 @@ export default async function LicitacionPage({
           </div>
           <div className="flex flex-col gap-0.5">
             <dt className="text-muted-foreground">Monto estimado</dt>
-            <dd className="font-mono tabular-nums">{formatoMoneda(licitacion.monto_estimado)}</dd>
+            <dd className="font-mono text-xl font-semibold tabular-nums">{formatoMoneda(licitacion.monto_estimado)}</dd>
           </div>
           <div className="flex flex-col gap-0.5">
             <dt className="text-muted-foreground">Cierre</dt>
